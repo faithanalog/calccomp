@@ -1,6 +1,6 @@
 void main() {
     clearScreen();
-    putNum(4 + 4);
+    putNum(8 - (3 + 2));
     putNum(2 + 2);
     getKey();
 }
