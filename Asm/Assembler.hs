@@ -1,3 +1,4 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 module Asm.Assembler where
 
 import Asm.Expr

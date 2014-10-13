@@ -296,11 +296,10 @@ directive = do
     optional (oneOf "#.")
     ident <- identifier
     args <- commaSep directiveArg
-    return $ if ident == "define" then
-        let (Literal (Label name)) = head args in
+    return $ case ident of
+        "define" -> let (Literal (Label name)) = head args in
             DefineDirective name $ if length args > 1 then args !! 1 else Literal (Num 1)
-    else
-        Directive ident args
+        _ -> Directive ident args
 
 mathOp :: Parser (Expr -> Expr -> Expr)
 mathOp = do

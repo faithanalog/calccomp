@@ -1,3 +1,4 @@
+{-# LANGUAGE DoAndIfThenElse #-}
 module Asm.Preprocess (preprocess) where
 import Control.Monad
 import Data.List (isPrefixOf, intercalate)
