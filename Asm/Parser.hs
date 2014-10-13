@@ -1,7 +1,7 @@
-module Asm.Parser (parseExpr, printTree) where
+module Asm.Parser (parseExpr, printTree, parseText) where
 
 import Asm.Expr
-import Text.Parsec hiding (space, spaces)
+import Text.Parsec hiding (space, spaces, hexDigit)
 import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
 import Text.Parsec.Language (emptyDef)
@@ -10,7 +10,7 @@ import Control.Monad
 import Control.Applicative ((<$>), (<*>))
 import System.Environment
 import Numeric
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 import Data.Maybe (catMaybes)
 import Data.Char (ord, toUpper)
 
@@ -31,6 +31,9 @@ lexer = Token.makeTokenParser style
 
 parseBin :: String -> Integer
 parseBin = foldl (\l r -> l * 2 + (if r == '1' then 1 else 0)) 0
+
+hexDigit :: Parser Char
+hexDigit = oneOf "abcdefABCDEF0123456789"
 
 binPrefix :: Parser Integer
 binPrefix = do
@@ -77,7 +80,7 @@ charNum = do
 integer :: Parser Integer
 integer = lexeme $ do
     sign <- option '+' (oneOf "+-")
-    num <- try binary <|> try hexadecimal <|> try decimal <|> try charNum
+    num <- try hexadecimal <|> try binary <|> try decimal <|> try charNum
     notFollowedBy lblChar
     return $ if sign == '+' then num else -num
 
@@ -87,20 +90,22 @@ space = char ' '
 spaces :: Parser String
 spaces = many1 space
 
+tabs :: Parser String
+tabs = many1 tab
+
 comment :: Parser String
 comment = do
     char ';'
     many (try $ noneOf "\n")
 
 whiteSpace :: Parser ()
-whiteSpace = skipMany (spaces <|> comment)
+whiteSpace = skipMany (spaces <|> tabs <|> comment)
 
 lexeme :: Parser a -> Parser a
 lexeme p = do
     x <- p
     whiteSpace
     return x
-
 
 stringNoCase :: String -> Parser String
 stringNoCase "" = return ""
@@ -135,7 +140,11 @@ comma = symbol ","
 operator :: Parser String
 operator = lexeme $ do
     op <- oneOf "+-*/><%"
-    return [op]
+    end <- case op of
+        '>' -> option "" (try (string ">"))
+        '<' -> option "" (try (string "<"))
+        _ -> return ""
+    return $ op:end
 
 identifier :: Parser String
 identifier = lexeme $ do
@@ -220,17 +229,21 @@ instr = do
     return $ Instr instr args
 
 num :: Parser Expr
-num = Num `fmap` integer
+num = do
+    x <- integer
+    return $ Literal (Num $ fromIntegral x)
 
 labelref :: Parser Expr
-labelref = Label `fmap` (lblIdentifier <|> do x <- char '$'; return [x])
+labelref = do
+    ident <- lblIdentifier <|> do x <- char '$'; return [x]
+    return $ Literal (Label ident)
 
 constAssign :: Parser Expr
 constAssign = do
     name <- lblIdentifier
-    symbol "="
+    symbol "=" <|> (optional (char '.') >> optional (char '.') >> symbol "equ")
     val <- argExpr
-    return $ Directive "define" [Label name, val]
+    return $ DefineDirective name val
 
 asmstring :: Parser Expr
 asmstring = String `fmap` stringLiteral
@@ -241,7 +254,11 @@ register = do
     reg <- case maybeReg ident of
                 Nothing -> parserZero
                 Just r -> return r
-    return $ Reg reg
+    return $ if regIs8Bit reg then Reg8 reg
+        else case reg of
+            IX -> Reg16Index IX
+            IY -> Reg16Index IY
+            _ -> Reg16 reg
 
 regIndirect :: Parser Expr
 regIndirect = do
@@ -251,9 +268,14 @@ regIndirect = do
                 symbol "bc",
                 try $ symbol "ix",
                 symbol "iy",
+                symbol "sp",
                 symbol "c"
             ]
-    return $ RegIndir $ getReg regName
+    return $ case regName of
+        "ix" -> RegIndex IX (Literal $ Num 0)
+        "iy" -> RegIndex IY (Literal $ Num 0)
+        "hl" -> Reg8 HL'
+        _ -> RegIndir $ getReg regName
 
 regIndex :: Parser Expr
 regIndex = do
@@ -271,9 +293,14 @@ addrIndirect = do
 directive :: Parser Expr
 directive = do
     oneOf "#."
+    optional (oneOf "#.")
     ident <- identifier
     args <- commaSep directiveArg
-    return $ Directive ident args
+    return $ if ident == "define" then
+        let (Literal (Label name)) = head args in
+            DefineDirective name $ if length args > 1 then args !! 1 else Literal (Num 1)
+    else
+        Directive ident args
 
 mathOp :: Parser (Expr -> Expr -> Expr)
 mathOp = do
@@ -330,6 +357,7 @@ parseStatements = do
     stmnts <- parseLine `sepBy` many1 newline
     return $ catMaybes stmnts
 
+-- Convert top level 'Parens' exprs to AddrIndir exprs. Consider merging with 'removeParens' pass
 indirPass :: [Expr] -> [Expr]
 indirPass = map conv
     where conv (Instr i args) = Instr i (map convParens args)
@@ -337,11 +365,26 @@ indirPass = map conv
           convParens (Parens xpr) = AddrIndir xpr
           convParens x = x
 
+-- Remove 'Parens' exprs, as we no longer need them
+removeParens :: [Expr] -> [Expr]
+removeParens = map conv
+    where conv (Parens xpr) = conv xpr
+          conv (Binop op l r) = Binop op (conv l) (conv r)
+          conv (Directive str xs) = Directive str (removeParens xs)
+          conv (DefineDirective str xpr) = DefineDirective str (conv xpr)
+          conv (RegIndex r xpr) = RegIndex r (conv xpr)
+          conv (Instr i xs) = Instr i (removeParens xs)
+          conv xpr = xpr
+
 parseExpr :: String -> [Expr]
 parseExpr t =
   case parse parseStatements "stdin" t of
     Left err -> error (show err)
-    Right ast -> indirPass ast
+    Right ast -> (removeParens . indirPass) ast
 
 printTree :: [Expr] -> String
 printTree xprs = unlines (map show xprs)
+
+-- Parse file with includes
+parseText :: String -> [Expr]
+parseText = parseExpr

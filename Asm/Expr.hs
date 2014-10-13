@@ -3,7 +3,7 @@ module Asm.Expr where
 import Data.Char (toUpper)
 import Data.List (intercalate)
 
-data Register = IXH | IXL | IYH | IYL | A | B | C | D | E | H | L | BC | DE | HL | IX | IY | I | R deriving (Show,Ord,Eq,Read)
+data Register = IXH | IXL | IYH | IYL | A | B | C | D | E | H | L | HL' | I | R | BC | DE | HL | IX | IY | SP | AF | AF' deriving (Show,Ord,Eq,Read)
 
 data Instruction = EX | EXX | LD | LDD | LDDR | LDI | LDIR | POP | PUSH
                  | ADC | ADD | CP | CPD | CPDR | CPI | CPIR | CPL | DAA
@@ -12,12 +12,12 @@ data Instruction = EX | EXX | LD | LDD | LDDR | LDI | LDIR | POP | PUSH
                  | RL | RLA | RLC | RLCA | RLD
                  | RR | RRA | RRC | RRCA | RRD | SLA | SRA | SRL
                  | CALL | DJNZ | JP | JR | NOP | RET | RETI | RETN | RST
-                 | DI | EI | HALT | IM | IN | IND | INI | INIR
+                 | DI | EI | HALT | IM | IN | IND | INDR | INI | INIR
                  | OTDR | OTIR | OUT | OUTD | OUTI deriving (Eq,Show,Read)
 
 data Op = Add | Sub | Mul | Div | Lt | Gt | LShift | RShift | Mod deriving (Eq)
 
-data Condition = CondZ | CondNZ | CondC | CondNC | CondPO | CondPE | CondP | CondM | CondNOCOND deriving (Eq,Read)
+data Condition = CondNZ | CondZ | CondNC | CondC | CondPO | CondPE | CondP | CondM | CondNOCOND deriving (Eq,Read,Enum)
 
 instance Show Op where
     show Add = "+"
@@ -40,38 +40,49 @@ instance Show Condition where
     show CondP = "p"
     show CondM = "m"
 
-data Expr = Label String
-          | LabelDef String
+data Literal = Label String | Num Int deriving (Eq)
+
+instance Show Literal where
+    show (Label lbl) = lbl
+    show (Num x) = show x
+
+data Expr = LabelDef String
           | Instr Instruction [Expr]
           | Cond Condition
           | Directive String [Expr]
-          | Reg Register
+          | DefineDirective String Expr
+          | Reg8 Register
+          | Reg16 Register
+          | Reg16Index Register
           | RegIndir Register
           | RegIndex Register Expr
           | AddrIndir Expr
-          | Num Integer
+          | Literal Literal
           | String String
           | Binop Op Expr Expr
           | Parens Expr
           deriving (Eq)
 
 instance Show Expr where
-    show (Label lbl) = lbl
+    show (Literal x) = show x
     show (LabelDef lbl) = lbl ++ ":"
     show (Instr ins xprs) = show ins ++ " " ++ (intercalate ", " $ map show xprs)
     show (Cond cond) = show cond
 
     show (Directive "define" xprs) = show (head xprs) ++ " = " ++ show (xprs !! 1)
     show (Directive dir xprs) = "." ++ dir ++ " " ++ (intercalate ", " $ map show xprs)
+    show (DefineDirective lbl xpr) = lbl ++ " = " ++ (show xpr)
 
-    show (Reg reg) = show reg
+    show (Reg8 reg) = show reg
+    show (Reg16 reg) = show reg
+    show (Reg16Index reg) = show reg
     show (RegIndir reg) = "(" ++ show reg ++ ")"
     show (RegIndex reg xpr) = "(" ++ show reg ++ " + " ++ show xpr ++ ")"
     show (AddrIndir xpr) = "(" ++ show xpr ++ ")"
-    show (Num x) = show x
+
     show (String str) = show str
     show (Binop op lft rt) = showOpArg lft ++ " " ++ show op ++ " " ++ showOpArg rt
-    show (Parens xpr) = "(" ++ show xpr ++ ")"
+    show (Parens xpr) = "((" ++ show xpr ++ "))"
 
 -- Top level binary ops should have no parentheses, nested ones should
 showOpArg :: Expr -> String
@@ -98,6 +109,12 @@ getReg r = read (map toUpper r)
 
 getCond :: String -> Condition
 getCond c = read $ "Cond" ++ map toUpper c
+
+regIs8Bit :: Register -> Bool
+regIs8Bit r = r <= R
+
+regIs16Bit :: Register -> Bool
+regIs16Bit = not . regIs8Bit
 
 numArgs :: Instruction -> Int
 numArgs EX = 2

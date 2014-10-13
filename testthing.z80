@@ -1,0 +1,55 @@
+#include "ti84pcse.inc"
+#include "dcse8.inc"
+
+  .org UserMem
+BinaryStart:
+  .db $DE,$2A,"N",$BB,$B4,$BB,$B4,$BB,$B3,$BB,$C3,")D"   ;Disp "Needs D
+  .db $BB,$BF,$BB,$BF,$BB,$C2,$BB,$C3,")CSE",$2A,$3F   ;oors CSE"
+  .db $EF,$11                      ;OpenLib(
+  .db "D",$BB,$BF,$BB,$BF,$BB,$C2,$BB,$C3,"CSE",$11,$3F  ;(tokenized "DoorsCSE")
+  .db $EF,$12,$3F                    ;ExecLib
+  .db $D5,$3F                      ;Return
+  .db tExtTok,tAsm84CPrgm,$3F              ;Asm84CPrgm
+
+HeaderStart:
+  .dw ASMStart-HeaderStart    ;offset to code
+  ; Header sections start here
+
+  .dw 10
+  .db ASMHEADER_FIELD_TYPE_LIB  ;== 3
+  .db "DoorsCSE",8,0        ;Lib name, min major version, min minor version
+
+  .dw endDCSDesc - startDCSDesc
+  .db ASMHEADER_FIELD_TYPE_DESC
+startDCSDesc:
+  .db "Test Prog",0
+endDCSDesc:
+
+  .dw endDCSAuthor - startDCSAuthor
+  .db ASMHEADER_FIELD_TYPE_AUTH
+startDCSAuthor:
+  .db "Unknownloner",0
+endDCSAuthor:
+
+  .dw 0   ;End of header field: 0 bytes of data
+  .db $ff   ;End of header field: type 255
+ASMStart:
+  .relocate UserMem
+  call ClearLCDFull
+  ld h,10
+  ld l,20
+  ld d,50
+  ld e,100
+  ld bc,F800h
+  call ColorRectangle
+  ld hl,4500
+  call WasteTimeLOL
+  ret
+
+WasteTimeLOL:
+  djnz $
+  dec hl
+  ld a,h
+  or l
+  jp nz,WasteTimeLOL
+  ret
