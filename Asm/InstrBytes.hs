@@ -142,6 +142,7 @@ instrBytes CPIR _ = w8l [0xED, 0xB1]
 instrBytes CPL _  = w8 0x2F
 instrBytes DAA _  = w8 0x27
 
+-- I'm sort of OK with code dupe here because it's only 2 instructions
 instrBytes DEC (Reg8 r:_) = w8 $ regBits 0x05 r 3
 instrBytes DEC (RegIndex r o:_) = regIndex r <> instrBytes DEC [Reg8 HL'] <> w8 o
 instrBytes DEC (Reg16 r:_) = w8 $ regBits 0x0B r 4
@@ -150,7 +151,7 @@ instrBytes DEC (Reg16Index r:_) = regIndex r <> instrBytes DEC [Reg16 HL]
 instrBytes INC (Reg8 r:_) = w8 $ regBits 0x04 r 3
 instrBytes INC (RegIndex r o:_) = regIndex r <> instrBytes INC [Reg8 HL'] <> w8 o
 instrBytes INC (Reg16 r:_) = w8 $ regBits 0x03 r 4
-instrBytes INC (Reg16Index r:_) = regIndex r <> instrBytes INC [Reg8 HL]
+instrBytes INC (Reg16Index r:_) = regIndex r <> instrBytes INC [Reg16 HL]
 
 instrBytes NEG _ = w8l [0xED, 0x44]
 
@@ -173,7 +174,6 @@ instrBytes RES xs = bitOp 0x80 xs
 instrBytes SET xs = bitOp 0xC0 xs
 
 instrBytes CCF _ = w8 0x3F
-
 instrBytes SCF _ = w8 0x37
 
 -- Shift/Rotate ops
