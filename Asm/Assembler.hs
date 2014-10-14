@@ -1,7 +1,15 @@
 {-# LANGUAGE DoAndIfThenElse #-}
-module Asm.Assembler where
+module Asm.Assembler (
+    assemble,
+    makeProgVar,
+    makeFile,
+    assembleText,
+    assembleFile,
+    VarType(..)) where
 
 import Asm.Expr
+import Asm.Parser
+import Asm.Preprocess
 import Asm.InstrSize
 import Data.Bits
 import Control.Monad
@@ -14,6 +22,8 @@ import qualified Data.ByteString.Lazy as B
 
 type Labels = Map.Map String Int
 type MemLocs = [(Int,Int)]
+
+data VarType = Prog | EditLockedProg | AppVar
 
 -- Evaluates a numeric constant
 evalExpr :: Labels -> Expr -> Either String Int
@@ -179,8 +189,8 @@ w8l :: (Integral a) => [a] -> Builder
 w8l x = foldl1 (<>) (map w8 x)
 
 -- Generates bytes for a progvar or appvar
-makeProgVar :: String -> Int -> B.ByteString -> B.ByteString
-makeProgVar name typeid contents = toLazyByteString $
+makeProgVar :: String -> VarType -> B.ByteString -> B.ByteString
+makeProgVar name vtype contents = toLazyByteString $
     w16 0x0d
     <> w16 (size + 2)
     <> w8 typeid
@@ -191,24 +201,48 @@ makeProgVar name typeid contents = toLazyByteString $
     <> w16 size
     <> lazyByteString contents
     where size = B.length contents
+          typeid = case vtype of
+              Prog -> 0x05
+              EditLockedProg -> 0x06
+              AppVar -> 0x15
 
 -- Generates bytes for a file to be sent to a calc with a prog/appvar
-makeFile :: String -> Int -> B.ByteString -> B.ByteString
-makeFile name typeid contents = toLazyByteString $
+makeFile :: String -> VarType -> B.ByteString -> B.ByteString
+makeFile name vtype contents = toLazyByteString $
     string8 "**TI83F*"
     <> w8l [0x1A, 0x0A, 0x00]
     <> w8l (replicate 42 0)
     <> w16 (B.length var)
     <> lazyByteString var
     <> w16 checksum
-    where var = makeProgVar name typeid contents
+    where var = makeProgVar name vtype contents
           checksum = B.foldl (\x y -> x + fromIntegral y) 0 var
 
+-- Assembles the AST and returns the instruction bytes
 assemble :: [Expr] -> Either String B.ByteString
 assemble ast = do
     lbls <- labelValues ast
     varlocs <- memLocs ast lbls
     allocated <- Map.union lbls `fmap` allocVars ast lbls varlocs
-    -- allocated <- allocVars ast lbls varlocs
-    bytes <- allExprBytes ast allocated
-    return $ makeFile "TESTPRG" 0x05 $ toLazyByteString bytes
+    toLazyByteString `fmap` allExprBytes ast allocated
+
+
+-- Assembles assembly code which is assumed to have already been preprocessed, wraps it in
+-- a TI file
+-- Although no file reading is done, a filename must be passed for the
+-- parser to report errors for it. It may be ""
+assembleText :: String -> String -> String -> VarType -> Either String B.ByteString
+assembleText fname fcontents vname vtype = do
+    tree <- parseText fcontents fname
+    bytes <- assemble tree
+    return $ makeFile vname vtype bytes
+
+-- Reads a file, preprocesses the text, parses it, assembles the resulting AST,
+-- and wraps it in a TI file
+--
+-- assembleFile "code.z80" "CODE" EditLockedProg will assemble file "code.z80" and output
+-- a variable named CODE of type program (that's the 0x05)
+assembleFile :: FilePath -> String -> VarType -> IO (Either String B.ByteString)
+assembleFile fname vname vtype = do
+    text <- preprocess fname
+    return $ assembleText fname text vname vtype

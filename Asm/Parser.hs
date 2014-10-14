@@ -337,11 +337,13 @@ removeParens = map conv
           conv (Instr i xs) = Instr i (removeParens xs)
           conv xpr = xpr
 
-parseText :: String -> String -> [Expr]
+-- Parses text and returns an error or an AST
+-- parseText contents fname will parse contents and report errors as coming from fname
+parseText :: String -> String -> Either String [Expr]
 parseText t fname =
-  case parse parseStatements fname t of
-    Left err -> error (show err)
-    Right ast -> (removeParens . indirPass) ast
+    case parse parseStatements fname t of
+        Left err -> Left (show err)
+        Right ast -> Right $ removeParens . indirPass $ ast
 
 printTree :: [Expr] -> String
 printTree xprs = unlines (map show xprs)

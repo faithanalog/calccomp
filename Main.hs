@@ -6,9 +6,7 @@ import qualified Asm.Preprocess as Asm
 import qualified Data.ByteString.Lazy as B
 
 main = do
-    text <- Asm.preprocess "testthing.z80"
-    let tree = Asm.parseText text "testthing.z80"
-    let asm = Asm.assemble tree
+    asm <- Asm.assembleFile "testthing.z80" "TESTPRG" Asm.Prog
     case asm of
         Left err -> putStrLn $ "ERROR || " ++ err
         Right bytes -> do

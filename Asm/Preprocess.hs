@@ -66,7 +66,7 @@ directives :: String -> String -> [Directive]
 directives text dir = [d | Dir d <- matches]
     where matches = filter (isDirective dir) . map parseLine . lines $ text
 
-readWithIncludes :: String -> IO String
+readWithIncludes :: FilePath -> IO String
 readWithIncludes file = do
     text <- readFile file
     let incs = directives text "include"
@@ -113,7 +113,7 @@ processBCalls text = unlines (map convCalls $ lines text)
 processNewlines :: String -> String
 processNewlines = replace "\\" "\n"
 
-preprocess :: String -> IO String
+preprocess :: FilePath -> IO String
 preprocess fname = do
     text <- readWithIncludes fname
     let out = processNewlines . processDefines . processBCalls $ text
