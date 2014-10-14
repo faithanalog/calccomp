@@ -34,6 +34,9 @@ evalExpr lbls (Binop op l r) = do
         LShift -> left `shift` right
         RShift -> left `shift` (-right)
         Mod -> left `mod` right
+        And -> left .&. right
+        Or -> left .|. right
+        Xor -> left `xor` right
 
 evalExpr lbls xpr = Left $ "Could not evaluate: " ++ show xpr
 

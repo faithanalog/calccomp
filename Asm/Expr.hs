@@ -16,9 +16,9 @@ data Instruction = EX | EXX | LD | LDD | LDDR | LDI | LDIR | POP | PUSH
                  | DI | EI | HALT | IM | IN | IND | INDR | INI | INIR
                  | OTDR | OTIR | OUT | OUTD | OUTI deriving (Eq,Show,Read)
 
-data Op = Add | Sub | Mul | Div | Lt | Gt | LShift | RShift | Mod deriving (Eq)
+data Op = Add | Sub | Mul | Div | Lt | Gt | LShift | RShift | Mod | Or | And | Xor deriving (Eq)
 
-data Condition = CondNZ | CondZ | CondNC | CondC | CondPO | CondPE | CondP | CondM | CondNOCOND deriving (Eq,Read,Enum)
+data Condition = CondNZ | CondZ | CondNC | CondC | CondPO | CondPE | CondP | CondM deriving (Eq,Read,Enum)
 
 instance Show Op where
     show Add = "+"
@@ -30,6 +30,9 @@ instance Show Op where
     show Mod = "%"
     show LShift = "<<"
     show RShift = ">>"
+    show Or = "|"
+    show And = "&"
+    show Xor = "^"
 
 instance Show Condition where
     show CondZ = "z"
@@ -90,26 +93,26 @@ showOpArg :: Expr -> String
 showOpArg bop@(Binop {}) = "(" ++ show bop ++ ")"
 showOpArg x = show x
 
-getInstr :: String -> Instruction
-getInstr i = read (map toUpper i)
-
-maybeInstr :: String -> Maybe Instruction
-maybeInstr i
+maybeRead :: (Read a) => String -> Maybe a
+maybeRead x
     | null res = Nothing
     | otherwise = Just $ fst . head $ res
-    where res = reads (map toUpper i)
+    where res = reads x
 
-maybeReg :: String -> Maybe Register
-maybeReg r
-    | null res = Nothing
-    | otherwise = Just $ fst . head $ res
-    where res = reads (map toUpper r)
+readMaybeUpper :: (Read a) => String -> Maybe a
+readMaybeUpper = maybeRead . map toUpper
 
-getReg :: String -> Register
-getReg r = read (map toUpper r)
+readInstr :: String -> Instruction
+readInstr = read . map toUpper
 
-getCond :: String -> Condition
-getCond c = read $ "Cond" ++ map toUpper c
+readReg :: String -> Register
+readReg = read . map toUpper
+
+readCond :: String -> Condition
+readCond c = read $ "Cond" ++ map toUpper c
+
+readCondMaybe :: String -> Maybe Condition
+readCondMaybe c = maybeRead $ "Cond" ++ map toUpper c
 
 regIs8Bit :: Register -> Bool
 regIs8Bit r = r <= R

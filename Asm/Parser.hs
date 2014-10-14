@@ -5,6 +5,7 @@ import Text.Parsec hiding (space, spaces, hexDigit)
 import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
 import Numeric
+import Control.Monad
 import Data.Maybe (catMaybes)
 import Data.Char (ord, toUpper)
 
@@ -150,15 +151,20 @@ stringLiteral = lexeme $ do
     return str
 
 singleton :: Parser a -> Parser [a]
-singleton p = do
-    x <- p
-    return [x]
+singleton = liftM (:[])
 
 lblChar :: Parser Char
 lblChar = alphaNum <|> char '_'
 
 lblIdentifier :: Parser String
 lblIdentifier = lexeme $ many1 lblChar
+
+parseMaybe :: (String -> Maybe b) -> Parser b
+parseMaybe f = do
+    ident <- identifier
+    case f ident of
+        Nothing -> parserZero
+        Just x -> return x
 
 -- Parser
 asmlabel :: Parser Expr
@@ -168,37 +174,23 @@ asmlabel = lexeme $ do
     return $ LabelDef name
 
 condition :: Parser Expr
-condition = do
-    condName <- choice [
-                try $ symbol "z",
-                try $ symbol "nz",
-                try $ symbol "c",
-                try $ symbol "nc",
-                try $ symbol "po",
-                try $ symbol "pe",
-                try $ symbol "p",
-                try $ symbol "m"
-            ]
-    return $ Cond $ getCond condName
+condition = Cond `fmap` parseMaybe readCondMaybe
 
 instr :: Parser Expr
 instr = do
-    ident <- identifier
-    instr <- case maybeInstr ident of
-            Nothing -> parserZero
-            Just x -> return x
+    instr <- parseMaybe readMaybeUpper
     args <- case instr of
             CALL -> jpCond
             JR -> jpCond
             JP -> jpCond
-            RET -> option [] $ try $ singleton condition
+            RET -> option [] (try $ singleton condition)
             _ -> commaSep argExpr
     return $ Instr instr args
     where jpCond = do
-              cond <- option [] $ try $ do
+              cond <- option [] (try $ do
                   x <- condition
                   symbol ","
-                  return [x]
+                  return [x])
               arg <- argExpr
               return $ cond ++ [arg]
 
@@ -209,13 +201,13 @@ num = do
 
 labelref :: Parser Expr
 labelref = do
-    ident <- lblIdentifier <|> do x <- char '$'; return [x]
+    ident <- lblIdentifier <|> symbol "$"
     return $ Literal (Label ident)
 
 constAssign :: Parser Expr
 constAssign = do
     name <- lblIdentifier
-    symbol "=" <|> (optional (char '.') >> optional (char '.') >> symbol "equ")
+    symbol "=" <|> (optional (char '.') >> symbol "equ")
     val <- argExpr
     return $ DefineDirective name val
 
@@ -224,10 +216,7 @@ asmstring = String `fmap` stringLiteral
 
 register :: Parser Expr
 register = do
-    ident <- identifier
-    reg <- case maybeReg ident of
-                Nothing -> parserZero
-                Just r -> return r
+    reg <- parseMaybe readMaybeUpper
     return $ if regIs8Bit reg then Reg8 reg
         else case reg of
             IX -> Reg16Index IX
@@ -249,7 +238,7 @@ regIndirect = do
         "ix" -> RegIndex IX (Literal $ Num 0)
         "iy" -> RegIndex IY (Literal $ Num 0)
         "hl" -> Reg8 HL'
-        _ -> RegIndir $ getReg regName
+        _ -> RegIndir $ readReg regName
 
 regIndex :: Parser Expr
 regIndex = do
@@ -257,7 +246,7 @@ regIndex = do
         reg <- choice [try $ symbol "ix", symbol "iy"]
         offs <- labelref <|> num
         return (reg, offs)
-    return $ RegIndex (getReg regName) offs
+    return $ RegIndex (readReg regName) offs
 
 addrIndirect :: Parser Expr
 addrIndirect = do
@@ -267,7 +256,6 @@ addrIndirect = do
 directive :: Parser Expr
 directive = do
     oneOf "#."
-    optional (oneOf "#.")
     ident <- identifier
     args <- commaSep directiveArg
     return $ case ident of
@@ -288,6 +276,9 @@ mathOp = do
                 "%" -> Binop Mod
                 "<<" -> Binop LShift
                 ">>" -> Binop RShift
+                "|" -> Binop Or
+                "&" -> Binop And
+                "^" -> Binop Xor
 
 parensExpr :: Parser Expr -> Parser Expr
 parensExpr p = do
