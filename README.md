@@ -6,6 +6,8 @@ C compiler is very much incomplete, but the assembler works.
 
 
 ##The Assembler
+Assembler targets z80 processor, used by TI83+/TI84+CSE series calcs
+
 The assembler does _NOT_ support find and replace #defines or macros,
 right now #defines serve only as flags for #ifdef. You CAN define
 numerical constants however like `VAL = 5` or `VAL equ 5`. bcall
