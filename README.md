@@ -34,3 +34,8 @@ and feed a list of expression directly into the assembler, if this code
 was packaged up into a library (possible in the future). Because of this,
 it's not really designed to be used by actual assembly programmer who
 may want to use a more powerful assembler like BRASS.
+
+
+On the TODO is better error reporting. Right now any argument errors (like ld hl,de or something)
+will not be reported with a line number, although the args/instruction will
+be reported to Ctrl-F with. I want to track line numbers too for those.
