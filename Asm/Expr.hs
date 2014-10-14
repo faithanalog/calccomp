@@ -73,7 +73,6 @@ instance Show Expr where
     show (Instr ins xprs) = show ins ++ " " ++ intercalate ", " (map show xprs)
     show (Cond cond) = show cond
 
-    show (Directive "define" xprs) = show (head xprs) ++ " = " ++ show (xprs !! 1)
     show (Directive dir xprs) = "." ++ dir ++ " " ++ intercalate ", " (map show xprs)
     show (DefineDirective lbl xpr) = lbl ++ " = " ++ show xpr
 
