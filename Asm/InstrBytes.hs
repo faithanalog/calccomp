@@ -178,7 +178,6 @@ instrBytes SCF _ = w8 0x37
 
 -- Shift/Rotate ops
 
--- SO MUCH CODE DUPE PLZ FIX
 instrBytes RL  xs = shiftOp 0x10 xs
 instrBytes RLC xs = shiftOp 0x00 xs
 instrBytes RR  xs = shiftOp 0x18 xs
