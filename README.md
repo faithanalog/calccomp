@@ -1,10 +1,36 @@
-#C compiler targeting TI calcs
+#C Compiler, also Assembler targeting TI calcs
 
-Edit Main.hs to change the target file (by default it reads 'test.c').
+Edit Main.hs to change the target file and output file
 
-Output is STDOUT, so just pipe that wherever. It outputs code that brass should
-be able to assemble. For best results, use with DCS7 SDK, because that's what I
-test with.
+C compiler is very much incomplete, but the assembler works.
 
-Everything in the Asm/ folder doesn't do anything yet, I'll be messing with
-that later. the stuff in the C/ folder is functional
+
+##The Assembler
+The assembler does _NOT_ support find and replace #defines or macros,
+right now #defines serve only as flags for #ifdef. You CAN define
+numerical constants however like `VAL = 5` or `VAL equ 5`. bcall
+is still supported, but it's hard coded in.
+
+Labels must be defined with the syntax `LabelName:` (the ':' is required).
+Nothing is space sensitive, so you can indent your labels and
+instructions as much or as little as you like. The assembler also
+supports the `line 1 \ line 2` syntax for writing multiple
+lines on one line. The assembler can also output to TI vars,
+but the var name must be defined in code (no `.varname` like brass).
+
+Other useful knowledge (Some is for brass users only):
+
+* `.relocate` is only an alia for `.org`
+* `.` and `#` are treated the same (both start a directive)
+* `.var` and `.varloc` are supported, but the only valid sizes for
+`.var` are `byte`, `word`, or a numeric constant. `tvar` is not supported
+* `.module` is not supported
+* If a string is fed to `.dw`, it will output a '0' byte after every character.
+* `.db` performs no conversions from ASCII to TI's char map
+
+In general, the assembler is designed to be simple, and targetable
+by compilers. Compilers in haskell could use this as a library
+and feed a list of expression directly into the assembler, if this code
+was packaged up into a library (possible in the future). Because of this,
+it's not really designed to be used by actual assembly programmer who
+may want to use a more powerful assembler like BRASS.
