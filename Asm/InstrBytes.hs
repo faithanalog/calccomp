@@ -2,9 +2,7 @@ module Asm.InstrBytes where
 import Asm.Expr hiding (Expr, Cond, Reg8, Reg16, Reg16Index, RegIndir, RegIndex, AddrIndir, Num)
 import qualified Data.ByteString as B
 import Data.ByteString.Lazy.Builder
-
 import Data.Monoid ((<>))
-import Data.Word
 
 data Expr = Cond Condition
           | Reg8 Register

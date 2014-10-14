@@ -3,14 +3,14 @@ module Asm.Assembler where
 
 import Asm.Expr
 import Asm.InstrSize
-import qualified Asm.InstrBytes as IB
 import Data.Bits
 import Control.Monad
 import Data.Monoid
-import qualified Data.ByteString.Lazy as B
 import Data.ByteString.Lazy.Builder
-import qualified Data.Map.Strict as Map
 import Data.Char
+import qualified Asm.InstrBytes as IB
+import qualified Data.Map.Strict as Map
+import qualified Data.ByteString.Lazy as B
 
 type Labels = Map.Map String Int
 type MemLocs = [(Int,Int)]

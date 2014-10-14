@@ -1,34 +1,15 @@
-module Asm.Parser (parseExpr, printTree, parseText) where
+module Asm.Parser (printTree, parseText) where
 
 import Asm.Expr
 import Text.Parsec hiding (space, spaces, hexDigit)
 import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
-import Text.Parsec.Language (emptyDef)
-import qualified Text.Parsec.Token as Token
-import Control.Monad
-import Control.Applicative ((<$>), (<*>))
-import System.Environment
 import Numeric
-import Data.List (intercalate, isPrefixOf)
 import Data.Maybe (catMaybes)
 import Data.Char (ord, toUpper)
 
 
 -- Lexer
-
-lexer :: Token.TokenParser ()
-lexer = Token.makeTokenParser style
-  where style = emptyDef {
-          Token.opStart = oneOf "+-*/=<>",
-          Token.opLetter = oneOf "<>=",
-          Token.reservedNames = [".org", ".db", ".dw"],
-          Token.commentLine = ";",
-          Token.identStart = letter <|> char '_',
-          Token.identLetter = alphaNum <|> char '_',
-          Token.caseSensitive = False
-        }
-
 parseBin :: String -> Integer
 parseBin = foldl (\l r -> l * 2 + (if r == '1' then 1 else 0)) 0
 
@@ -206,27 +187,20 @@ instr = do
     instr <- case maybeInstr ident of
             Nothing -> parserZero
             Just x -> return x
-    let jpCond = do
-            cond <- option [] $ try $ do
-                x <- condition
-                symbol ","
-                return [x]
-            arg <- argExpr
-            return $ cond ++ [arg]
     args <- case instr of
             CALL -> jpCond
             JR -> jpCond
             JP -> jpCond
             RET -> option [] $ try $ singleton condition
-            instr -> case numArgs instr of
-                0 -> return []
-                1 -> singleton argExpr
-                2 -> do
-                    xpr1 <- argExpr
-                    symbol ","
-                    xpr2 <- argExpr
-                    return [xpr1, xpr2]
+            _ -> commaSep argExpr
     return $ Instr instr args
+    where jpCond = do
+              cond <- option [] $ try $ do
+                  x <- condition
+                  symbol ","
+                  return [x]
+              arg <- argExpr
+              return $ cond ++ [arg]
 
 num :: Parser Expr
 num = do
@@ -375,15 +349,11 @@ removeParens = map conv
           conv (Instr i xs) = Instr i (removeParens xs)
           conv xpr = xpr
 
-parseExpr :: String -> [Expr]
-parseExpr t =
-  case parse parseStatements "stdin" t of
+parseText :: String -> String -> [Expr]
+parseText t fname =
+  case parse parseStatements fname t of
     Left err -> error (show err)
     Right ast -> (removeParens . indirPass) ast
 
 printTree :: [Expr] -> String
 printTree xprs = unlines (map show xprs)
-
--- Parse file with includes
-parseText :: String -> [Expr]
-parseText = parseExpr

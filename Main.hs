@@ -7,7 +7,7 @@ import qualified Data.ByteString.Lazy as B
 
 main = do
     text <- Asm.preprocess "testthing.z80"
-    let tree = Asm.parseExpr text
+    let tree = Asm.parseText text "testthing.z80"
     let asm = Asm.assemble tree
     case asm of
         Left err -> putStrLn $ "ERROR || " ++ err
