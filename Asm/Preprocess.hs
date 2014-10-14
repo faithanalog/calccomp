@@ -9,8 +9,7 @@ import Text.Parsec hiding (space, spaces, Line)
 import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
 
--- TODO: Get #defines off the crack and make it so ..equ isn't valid
-
+-- TODO: Maybe make #defines actually work for find/replace
 
 data Directive = Directive String [String] deriving (Eq)
 instance Show Directive where
@@ -46,14 +45,6 @@ directive = do
     args <- many1 (noneOf " ") `sepBy` many1 (char ' ' <|> tab)
     return $ Directive dir args
 
-directiveType :: String -> Parser Directive
-directiveType x = do
-    dir@(Directive t _) <- directive
-    if t == x then
-        return dir
-    else
-        parserZero
-
 stringNoCase :: String -> Parser String
 stringNoCase "" = return ""
 stringNoCase (s:str) = do
@@ -67,12 +58,13 @@ parseLine ln = case parse directive "" ln of
     Right x -> Dir x
 
 isDirective :: String -> Line -> Bool
-isDirective x (Dir (Directive dir _)) = x == dir
+isDirective x (Dir (Directive d _)) = x == d
 isDirective _ _ = False
 
 -- Gets all directives of a certain type in a file
 directives :: String -> String -> [Directive]
-directives text dir = [d | Dir d@(Directive t _) <- map parseLine $ lines text, t == dir]
+directives text dir = [d | Dir d <- matches]
+    where matches = filter (isDirective dir) . map parseLine . lines $ text
 
 readWithIncludes :: String -> IO String
 readWithIncludes file = do
@@ -83,25 +75,19 @@ readWithIncludes file = do
             if file == fname then return "" else readWithIncludes fname
     return $ unlines (files ++ [text])
 
-substitute :: [(String,String)] -> String -> String
-substitute _ x = x
--- substitute [] str = str
--- substitute ((old,new):defs) str = substitute defs (replace old new str)
-
 processDefines :: String -> String
 processDefines text = unlines $ transform [] (map parseLine $ lines text)
     where transform defs [] = []
-    	  transform defs (Dir (Directive "define" (a:b)):lns) = transform ((a,unwords b):defs) lns
-          transform defs (Dir (Directive "undef" (a:_)):lns) = transform [x | x@(o,_) <- defs, o /= a] lns
+    	  transform defs (Dir (Directive "define" (a:_)):lns) = transform (a:defs) lns
+          transform defs (Dir (Directive "undef" (a:_)):lns) = transform (filter (/=a) defs) lns
           transform defs (Dir (Directive "ifdef" (a:_)):lns) = transform defs $
-              if any (\(x,_) -> x == a) defs then
-                  lns
+              if a `elem` defs then lns
               else
                   tail $ dropWhile (not . isDirective "endif") lns
-          transform defs (Line ln:lns) = substitute defs ln : transform defs lns
+          transform defs (Line ln:lns) = ln : transform defs lns
           transform defs (Dir d@(Directive _ _):lns) = transform defs (Line (show d):lns)
 
--- Hard coded bcall replacement LOL
+-- Hard coded bcall replacement
 data OSCall = BCall String | BJump String
 instance Show OSCall where
     show (BCall lbl) = "rst 28h\n.dw " ++ lbl
