@@ -12,11 +12,11 @@ data Expr = Cond Condition
           | RegIndex Register Int
           | AddrIndir Int
           | Num Int
-          deriving (Eq)
+          deriving (Eq,Show)
 
--- Combines Constant c with bits for register r shifted s bits left
+-- Combines Constant base with bits for register r shifted s bits left
 regBits :: Int -> Register -> Int -> Int
-regBits c r s = fromIntegral $ c + (bits * (2 ^ s))
+regBits base r s = fromIntegral $ base + (bits * (2 ^ s))
     where bits = if regIs8Bit r then case r of
                        A -> 7
                        B -> 0
@@ -33,7 +33,7 @@ regBits c r s = fromIntegral $ c + (bits * (2 ^ s))
                        _ -> 3
 
 condBits :: Int -> Condition -> Builder
-condBits c cond = w8 $ fromIntegral (c + fromEnum cond * 8)
+condBits base cond = w8 $ fromIntegral (base + fromEnum cond * 8)
 
 w8 :: Int -> Builder
 w8 = word8 . fromIntegral
@@ -50,6 +50,25 @@ w16l x = foldl1 (<>) (map w16 x)
 regIndex :: Register -> Builder
 regIndex IX = w8 0xDD
 regIndex IY = w8 0xFD
+
+-- Pattern used for all bit shift operations that operate on any 8 bit register
+shiftOp :: Int -> [Expr] -> Builder
+shiftOp base (Reg8 r:_)       = w8l [0xCB, regBits base r 0]
+shiftOp base (RegIndex r o:_) = regIndex r <> w8l [0xCB, regBits base HL' 0]
+shiftOp _ args = error $ "Invalid args " ++ show args ++ " for bit shift instruction"
+
+-- Pattern used for AND/XOR/OR
+bitwiseOp :: Int -> Int -> [Expr] -> Builder
+bitwiseOp base _ (Reg8 r:_)       = w8 $ regBits base r 0
+bitwiseOp _ prefix (Num r:_)      = w8l [prefix, r]
+bitwiseOp base x (RegIndex r o:_) = regIndex r <> bitwiseOp base x [Reg8 HL'] <> w8 o
+bitwiseOp _ _ args = error $ "Invalid args " ++ show args ++ " for AND/XOR/OR instruction"
+
+-- Pattern used for BIT/SET/RES
+bitOp :: Int -> [Expr] -> Builder
+bitOp base (Num l:Reg8 r:_) = w8l [0xCB, regBits (base + l * 8) r 0]
+bitOp base (Num l:RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits (base + l * 8) HL' 0]
+bitOp _ args = error $ "Invalid args " ++ show args ++ " for BIT/SET/RES instruction"
 
 instrBytes :: Instruction -> [Expr] -> Builder
 -- Data movement ops
@@ -145,54 +164,28 @@ instrBytes SUB (Num r:_) = w8l [0xD6, r]
 instrBytes SUB (RegIndex r o:_) = regIndex r <> instrBytes SUB [Reg8 HL'] <> w8 o
 
 -- Bit ops
-instrBytes AND (Reg8 r:_) = w8 $ regBits 0xA0 r 0
-instrBytes AND (Num r:_) = w8l [0xE6, r]
-instrBytes AND (RegIndex r o:_) = regIndex r <> instrBytes AND [Reg8 HL'] <> w8 o
+instrBytes AND xs = bitwiseOp 0xA0 0xE6 xs
+instrBytes OR  xs = bitwiseOp 0xB0 0xF6 xs
+instrBytes XOR xs = bitwiseOp 0xA8 0xEE xs
 
-instrBytes BIT (Num l:Reg8 r:_) = w8l [0xCB, regBits (0x40 + l * 8) r 0]
-instrBytes BIT (Num l:RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits (0x40 + l * 8) HL' 0]
+instrBytes BIT xs = bitOp 0x40 xs
+instrBytes RES xs = bitOp 0x80 xs
+instrBytes SET xs = bitOp 0xC0 xs
 
 instrBytes CCF _ = w8 0x3F
 
-instrBytes OR (Reg8 r:_) = w8 $ regBits 0xB0 r 0
-instrBytes OR (Num r:_) = w8l [0xF6, r]
-instrBytes OR (RegIndex r o:_) = regIndex r <> instrBytes OR [Reg8 HL'] <> w8 o
-
-instrBytes RES (Num l:Reg8 r:_) = w8l [0xCB, regBits (0x80 + l * 8) r 0]
-instrBytes RES (Num l:RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits (0x80 + l * 8) HL' 0]
-
 instrBytes SCF _ = w8 0x37
-
-instrBytes SET (Num l:Reg8 r:_) = w8l [0xCB, regBits (0xC0 + l * 8) r 0]
-instrBytes SET (Num l:RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits (0xC0 + l * 8) HL' 0]
-
-instrBytes XOR (Reg8 r:_) = w8 $ regBits 0xA8 r 0
-instrBytes XOR (Num r:_) = w8l [0xEE, r]
-instrBytes XOR (RegIndex r o:_) = regIndex r <> instrBytes OR [Reg8 HL'] <> w8 o
 
 -- Shift/Rotate ops
 
 -- SO MUCH CODE DUPE PLZ FIX
-instrBytes RL (Reg8 r:_) = w8l [0xCB, regBits 0x10 r 0]
-instrBytes RL (RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits 0x10 HL' 0]
-
-instrBytes RLC (Reg8 r:_) = w8l [0xCB, regBits 0x00 r 0]
-instrBytes RLC (RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits 0x00 HL' 0]
-
-instrBytes RR (Reg8 r:_) = w8l [0xCB, regBits 0x18 r 0]
-instrBytes RR (RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits 0x18 HL' 0]
-
-instrBytes RRC (Reg8 r:_) = w8l [0xCB, regBits 0x08 r 0]
-instrBytes RRC (RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits 0x08 HL' 0]
-
-instrBytes SLA (Reg8 r:_) = w8l [0xCB, regBits 0x20 r 0]
-instrBytes SLA (RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits 0x20 HL' 0]
-
-instrBytes SRA (Reg8 r:_) = w8l [0xCB, regBits 0x28 r 0]
-instrBytes SRA (RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits 0x28 HL' 0]
-
-instrBytes SRL (Reg8 r:_) = w8l [0xCB, regBits 0x38 r 0]
-instrBytes SRL (RegIndex r o:_) = regIndex r <> w8l [0xCB, o, regBits 0x38 HL' 0]
+instrBytes RL  xs = shiftOp 0x10 xs
+instrBytes RLC xs = shiftOp 0x00 xs
+instrBytes RR  xs = shiftOp 0x18 xs
+instrBytes RRC xs = shiftOp 0x08 xs
+instrBytes SLA xs = shiftOp 0x20 xs
+instrBytes SRA xs = shiftOp 0x28 xs
+instrBytes SRL xs = shiftOp 0x38 xs
 
 instrBytes RLA _  = w8 0x17
 instrBytes RLCA _ = w8 0x07
@@ -256,3 +249,4 @@ instrBytes OUTD _ = w8l [0xED, 0xAB]
 instrBytes OTDR _ = w8l [0xED, 0xBB]
 instrBytes OUTI _ = w8l [0xED, 0xA3]
 instrBytes OTIR _ = w8l [0xED, 0xB3]
+instrBytes ins args = error $ "Invalid args " ++ show args ++ " for instruction " ++ show ins
