@@ -22,7 +22,7 @@ but the var name must be defined in code (no `.varname` like brass).
 
 Other useful knowledge (Some is for brass users only):
 
-* `.relocate` is only an alia for `.org`
+* `.relocate` is only an alias for `.org`
 * `.` and `#` are treated the same (both start a directive)
 * `.var` and `.varloc` are supported, but the only valid sizes for
 `.var` are `byte`, `word`, or a numeric constant. `tvar` is not supported
@@ -32,7 +32,7 @@ Other useful knowledge (Some is for brass users only):
 
 In general, the assembler is designed to be simple, and targetable
 by compilers. Compilers in haskell could use this as a library
-and feed a list of expression directly into the assembler, if this code
+and feed a list of expressions directly into the assembler, if this code
 was packaged up into a library (possible in the future). An actual
 assembly programmer may want to use a more powerful assembler
 like [Brass](http://www.benryves.com/products/brass).
