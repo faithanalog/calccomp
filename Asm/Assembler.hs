@@ -60,7 +60,7 @@ labelValues xprs = values xprs 0 Map.empty
 
           values (LabelDef lbl:xs) o labels = values xs o (addLabel lbl o labels)
 
-          values (DefineDirective lbl x:xs) o labels = do
+          values (Define lbl x:xs) o labels = do
               -- Insert current offset as "$" label
               val <- evalExpr (Map.insert "$" o labels) x
               values xs o (addLabel lbl val labels)
@@ -73,7 +73,7 @@ directives :: String -> [Expr] -> [[Expr]]
 directives dir xprs = [args | (Directive x args) <- xprs, x == dir]
 
 defines :: [Expr] -> [(String,Expr)]
-defines xprs = [(name,val) | (DefineDirective name val) <- xprs]
+defines xprs = [(name,val) | (Define name val) <- xprs]
 
 memLocs :: [Expr] -> Labels -> Either String MemLocs
 memLocs xprs lbls = forM memDefs $

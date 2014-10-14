@@ -209,7 +209,7 @@ constAssign = do
     name <- lblIdentifier
     symbol "=" <|> (optional (char '.') >> symbol "equ")
     val <- argExpr
-    return $ DefineDirective name val
+    return $ Define name val
 
 asmstring :: Parser Expr
 asmstring = String `fmap` stringLiteral
@@ -332,7 +332,7 @@ removeParens = map conv
     where conv (Parens xpr) = conv xpr
           conv (Binop op l r) = Binop op (conv l) (conv r)
           conv (Directive str xs) = Directive str (removeParens xs)
-          conv (DefineDirective str xpr) = DefineDirective str (conv xpr)
+          conv (Define str xpr) = Define str (conv xpr)
           conv (RegIndex r xpr) = RegIndex r (conv xpr)
           conv (Instr i xs) = Instr i (removeParens xs)
           conv xpr = xpr

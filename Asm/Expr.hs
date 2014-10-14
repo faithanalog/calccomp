@@ -54,7 +54,7 @@ data Expr = LabelDef String
           | Instr Instruction [Expr]
           | Cond Condition
           | Directive String [Expr]
-          | DefineDirective String Expr
+          | Define String Expr
           | Reg8 Register
           | Reg16 Register
           | Reg16Index Register
@@ -74,7 +74,7 @@ instance Show Expr where
     show (Cond cond) = show cond
 
     show (Directive dir xprs) = "." ++ dir ++ " " ++ intercalate ", " (map show xprs)
-    show (DefineDirective lbl xpr) = lbl ++ " = " ++ show xpr
+    show (Define lbl xpr) = lbl ++ " = " ++ show xpr
 
     show (Reg8 reg) = show reg
     show (Reg16 reg) = show reg
