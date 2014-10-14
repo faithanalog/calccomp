@@ -86,7 +86,7 @@ instance Show Expr where
 
     show (String str) = show str
     show (Binop op lft rt) = showOpArg lft ++ " " ++ show op ++ " " ++ showOpArg rt
-    show (Parens xpr) = "((" ++ show xpr ++ "))"
+    show (Parens xpr) = "(" ++ show xpr ++ ")"
 
 -- Top level binary ops should have no parentheses, nested ones should
 showOpArg :: Expr -> String
