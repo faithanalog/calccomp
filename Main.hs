@@ -9,7 +9,7 @@ import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
 main = do
-    ccode <- readFile "test2.c"
+    ccode <- readFile "test.c"
     let tree = C.parseExpr ccode
     let asm = C.compileTree tree
 

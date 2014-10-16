@@ -14,10 +14,8 @@ asm {
 }
 }
 
-void putNum(uint8 num) {
+void putNum() {
 asm {
-    ld l,(ix + _num)
-    ld h,0
     b_call(_DispHL)
     b_call(_NewLine)
 }
