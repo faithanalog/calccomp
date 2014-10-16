@@ -84,7 +84,9 @@ typeQualifier = varTypeQualifier <|> do
 -- Parser
 
 num :: Parser Expr
-num = Num `fmap` integer
+num = do
+    x <- integer
+    return $ Num (fromInteger x)
 
 cstring :: Parser Expr
 cstring = String `fmap` stringLiteral

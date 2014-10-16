@@ -1,10 +1,14 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Asm.Expr where
 
 import Data.Char (toUpper)
 import Data.List (intercalate)
+import Data.Generics
 
 -- HL' is (HL) since (HL) is treated like an 8 bit register
-data Register = IXH | IXL | IYH | IYL | A | B | C | D | E | H | L | HL' | I | R | BC | DE | HL | IX | IY | SP | AF | AF' deriving (Show,Ord,Eq,Read)
+data Register = A | B | C | D | E | H | L | HL' | I | R
+              | BC | DE | HL | IX | IY | SP | AF | AF'
+              deriving (Show,Ord,Eq,Read,Typeable,Data)
 
 data Instruction = EX | EXX | LD | LDD | LDDR | LDI | LDIR | POP | PUSH
                  | ADC | ADD | CP | CPD | CPDR | CPI | CPIR | CPL | DAA
@@ -14,11 +18,12 @@ data Instruction = EX | EXX | LD | LDD | LDDR | LDI | LDIR | POP | PUSH
                  | RR | RRA | RRC | RRCA | RRD | SLA | SRA | SRL
                  | CALL | DJNZ | JP | JR | NOP | RET | RETI | RETN | RST
                  | DI | EI | HALT | IM | IN | IND | INDR | INI | INIR
-                 | OTDR | OTIR | OUT | OUTD | OUTI deriving (Eq,Show,Read)
+                 | OTDR | OTIR | OUT | OUTD | OUTI
+                 deriving (Eq,Show,Read,Typeable,Data)
 
-data Op = Add | Sub | Mul | Div | Lt | Gt | LShift | RShift | Mod | Or | And | Xor deriving (Eq)
+data Op = Add | Sub | Mul | Div | Lt | Gt | LShift | RShift | Mod | Or | And | Xor deriving (Eq,Typeable,Data)
 
-data Condition = CondNZ | CondZ | CondNC | CondC | CondPO | CondPE | CondP | CondM deriving (Eq,Read,Enum)
+data Condition = CondNZ | CondZ | CondNC | CondC | CondPO | CondPE | CondP | CondM deriving (Eq,Read,Enum,Typeable,Data)
 
 instance Show Op where
     show Add = "+"
@@ -44,7 +49,7 @@ instance Show Condition where
     show CondP = "p"
     show CondM = "m"
 
-data Literal = Label String | Num Int deriving (Eq)
+data Literal = Label String | Num Int deriving (Eq,Typeable,Data)
 
 instance Show Literal where
     show (Label lbl) = lbl
@@ -65,7 +70,11 @@ data Expr = LabelDef String
           | String String
           | Binop Op Expr Expr
           | Parens Expr
-          deriving (Eq)
+          | AntiQuoteLbl String
+          | AntiQuoteNum String
+          | AntiQuoteStr String
+          | AntiQuoteReg String
+          deriving (Eq,Typeable,Data)
 
 instance Show Expr where
     show (Literal x) = show x
@@ -86,6 +95,10 @@ instance Show Expr where
     show (String str) = show str
     show (Binop op lft rt) = showOpArg lft ++ " " ++ show op ++ " " ++ showOpArg rt
     show (Parens xpr) = "(" ++ show xpr ++ ")"
+    show (AntiQuoteLbl x) = "@l{" ++ x ++ "}"
+    show (AntiQuoteStr x) = "@s{" ++ x ++ "}"
+    show (AntiQuoteReg x) = "@r{" ++ x ++ "}"
+    show (AntiQuoteNum x) = "@{" ++ x ++ "}"
 
 -- Top level binary ops should have no parentheses, nested ones should
 showOpArg :: Expr -> String
@@ -118,3 +131,16 @@ regIs8Bit r = r <= R
 
 regIs16Bit :: Register -> Bool
 regIs16Bit = not . regIs8Bit
+
+litNum :: Int -> Expr
+litNum = Literal . Num
+
+litLbl :: String -> Expr
+litLbl = Literal . Label
+
+reg :: Register -> Expr
+reg r =
+    case r of
+        IX -> Reg16Index IX
+        IY -> Reg16Index IY
+        _ -> (if regIs8Bit r then Reg8 else Reg16) r

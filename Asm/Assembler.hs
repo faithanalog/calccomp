@@ -61,22 +61,16 @@ sizeOf _ = 0
 labelValues :: [Expr] -> Either String Labels
 labelValues xprs = values xprs 0 Map.empty
     where values [] _ labels = Right labels
-
           values (Directive "org" (org:_):xs) o labels = do
               off <- evalExpr labels org
               values xs off labels
-
-          values (Directive "relocate" (org:_):xs) o labels = values (Directive "org" [org]:xs) o labels
-
+          values (Directive "relocate" args:xs) o labels = values (Directive "org" args:xs) o labels
           values (LabelDef lbl:xs) o labels = values xs o (addLabel lbl o labels)
-
           values (Define lbl x:xs) o labels = do
               -- Insert current offset as "$" label
               val <- evalExpr (Map.insert "$" o labels) x
               values xs o (addLabel lbl val labels)
-
           values (x:xs) o labels = values xs (o + sizeOf x) labels
-
           addLabel lbl = Map.insert (map toUpper lbl)
 
 directives :: String -> [Expr] -> [[Expr]]
@@ -226,14 +220,13 @@ assemble ast = do
     allocated <- Map.union lbls `fmap` allocVars ast lbls varlocs
     toLazyByteString `fmap` allExprBytes ast allocated
 
-
--- Assembles assembly code which is assumed to have already been preprocessed, wraps it in
+-- Preprocesses and assembles the assembly code, and wraps it in
 -- a TI file
 -- Although no file reading is done, a filename must be passed for the
 -- parser to report errors for it. It may be ""
 assembleText :: String -> String -> String -> VarType -> Either String B.ByteString
 assembleText fname fcontents vname vtype = do
-    tree <- parseText fcontents fname
+    tree <- parseText fname fcontents
     bytes <- assemble tree
     return $ makeFile vname vtype bytes
 
@@ -244,5 +237,5 @@ assembleText fname fcontents vname vtype = do
 -- a variable named CODE of type program (that's the 0x05)
 assembleFile :: FilePath -> String -> VarType -> IO (Either String B.ByteString)
 assembleFile fname vname vtype = do
-    text <- preprocess fname
+    text <- readWithIncludes fname
     return $ assembleText fname text vname vtype

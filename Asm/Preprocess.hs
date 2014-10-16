@@ -1,5 +1,5 @@
 {-# LANGUAGE DoAndIfThenElse #-}
-module Asm.Preprocess (preprocess) where
+module Asm.Preprocess (preprocess, preprocessFile, readWithIncludes) where
 import Control.Monad
 import Data.List (isPrefixOf, intercalate)
 import Data.List.Utils (replace, split)
@@ -113,8 +113,14 @@ processBCalls text = unlines (map convCalls $ lines text)
 processNewlines :: String -> String
 processNewlines = replace "\\" "\n"
 
-preprocess :: FilePath -> IO String
-preprocess fname = do
+-- Preprocess some asm code, which means parsing BCalls, handling #ifdefs,
+-- and changing \ to \n
+preprocess :: String -> String
+preprocess = processNewlines . processDefines . processBCalls
+
+-- Reads a file, processing includes and applying the
+-- pre-processor to the resulting contents
+preprocessFile :: FilePath -> IO String
+preprocessFile fname = do
     text <- readWithIncludes fname
-    let out = processNewlines . processDefines . processBCalls $ text
-    return out
+    return $ preprocess text

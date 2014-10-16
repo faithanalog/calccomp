@@ -1,6 +1,7 @@
-module Asm.Parser (printTree, parseText) where
+module Asm.Parser (printTree, parseText, parseFile, parseStatement) where
 
 import Asm.Expr
+import Asm.Preprocess
 import Text.Parsec hiding (space, spaces, hexDigit)
 import Text.Parsec.Expr
 import Text.Parsec.String (Parser)
@@ -241,12 +242,13 @@ regIndirect = do
         _ -> RegIndir $ readReg regName
 
 regIndex :: Parser Expr
-regIndex = do
-    (regName, offs) <- parens $ do
-        reg <- choice [try $ symbol "ix", symbol "iy"]
-        offs <- labelref <|> num
-        return (reg, offs)
-    return $ RegIndex (readReg regName) offs
+regIndex = parens $ do
+    reg <- try $ symbol "ix" <|> symbol "iy"
+    op <- symbol "+" <|> symbol "-"
+    arg <- mathExpr
+    return $ RegIndex (readReg reg) $ case op of
+        "+" -> arg
+        "-" -> Binop Mul (litNum (-1)) arg
 
 addrIndirect :: Parser Expr
 addrIndirect = do
@@ -282,19 +284,37 @@ parensExpr p = do
     xpr <- parens p
     return $ Parens xpr
 
-binOp :: Parser Expr
-binOp = chainl1 (try num <|> try labelref <|> try (parensExpr mathExpr)) mathOp
+antiQuoteLbl :: Parser Expr
+antiQuoteLbl = do
+    symbol "@l{"
+    q <- many $ noneOf "}"
+    symbol "}"
+    return $ AntiQuoteLbl q
 
-binOp' :: Parser Expr
-binOp' = do
-    lft <- labelref
-    op <- mathOp
-    rt <- labelref
-    return $ op lft rt
+antiQuoteStr :: Parser Expr
+antiQuoteStr = do
+    symbol "@s{"
+    q <- many $ noneOf "}"
+    symbol "}"
+    return $ AntiQuoteStr q
+
+antiQuoteNum :: Parser Expr
+antiQuoteNum = do
+    symbol "@{"
+    q <- many $ noneOf "}"
+    symbol "}"
+    return $ AntiQuoteNum q
+
+antiQuote :: Parser Expr
+antiQuote = try antiQuoteNum <|> try antiQuoteStr <|> antiQuoteLbl
+
+binOp :: Parser Expr
+binOp = chainl1 (try num <|> try antiQuote <|> try labelref <|> try (parensExpr mathExpr)) mathOp
 
 mathExpr :: Parser Expr
 mathExpr = try binOp
         <|> try num
+        <|> try antiQuote
         <|> labelref
 
 directiveArg :: Parser Expr
@@ -307,6 +327,7 @@ argExpr = try register
        <|> try regIndirect
        <|> try regIndex
        <|> try binOp
+       <|> antiQuote
 
 
 statement :: Parser Expr
@@ -337,13 +358,25 @@ removeParens = map conv
           conv (Instr i xs) = Instr i (removeParens xs)
           conv xpr = xpr
 
--- Parses text and returns an error or an AST
+-- Parses a single statement
+parseStatement :: String -> Either String Expr
+parseStatement x = case parse (whiteSpace >> statement) "" x of
+    Left err -> Left $ show err
+    Right ast -> Right . head . removeParens . indirPass $ [ast]
+
+-- preprocesses and parses text; returns an error or an AST
 -- parseText contents fname will parse contents and report errors as coming from fname
 parseText :: String -> String -> Either String [Expr]
-parseText t fname =
-    case parse parseStatements fname t of
-        Left err -> Left (show err)
+parseText fname contents =
+    case parse parseStatements fname (preprocess contents) of
+        Left err -> Left $ show err
         Right ast -> Right $ removeParens . indirPass $ ast
+
+-- reads, preprocesses, and parses a file. Reads with #includes
+parseFile :: FilePath -> IO (Either String [Expr])
+parseFile fname = do
+    contents <- readWithIncludes fname
+    return $ parseText fname contents
 
 printTree :: [Expr] -> String
 printTree xprs = unlines (map show xprs)

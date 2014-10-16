@@ -19,10 +19,12 @@ arg8Size r = case r of
 
 instrSize :: Instruction -> [Expr] -> Int
 -- Data movement ops
-instrSize EX (l:r:[]) = case l of
-    RegIndir SP -> regArgSize r
-    _ -> 1
+instrSize EX (RegIndir SP:r:_) = regArgSize r
+instrSize EX _ = 1
+
 instrSize EXX _ = 1
+
+-- Oh god why
 instrSize LD (l:r:[]) = case l of
     Reg8 A -> case r of
         RegIndir _ -> 1
@@ -51,65 +53,63 @@ instrSize LD (l:r:[]) = case l of
               AddrIndir _ -> 3
               _ -> reg16size
 
-instrSize LDD _  = 2
+instrSize LDD  _ = 2
 instrSize LDDR _ = 2
-instrSize LDI _  = 2
+instrSize LDI  _ = 2
 instrSize LDIR _ = 2
-instrSize POP (r:[]) = case r of
-    Reg16 _ -> 1
-    Reg16Index _ -> 2
+instrSize POP (Reg16 _:_) = 1
+instrSize POP (Reg16Index _:_) = 2
 instrSize PUSH xs = instrSize POP xs
 
 -- Arithmetic ops
-instrSize ADC (l:r:[]) = case l of
-    Reg8 A -> arg8Size r
-    Reg16 HL -> 2
+instrSize ADC (Reg8 A:r:_) = arg8Size r
+instrSize ADC (Reg16 HL:_) = 2
 
-instrSize ADD (l:r:[]) = case l of
-    Reg8 A -> arg8Size r
-    _ -> regArgSize l
+instrSize ADD (Reg8 A:r:_) = arg8Size r
+instrSize ADD (l:_) = regArgSize l
 
-instrSize CP (r:[]) = arg8Size r
+instrSize CP (r:_) = arg8Size r
 instrSize CPD _  = 2
 instrSize CPDR _ = 2
 instrSize CPI _  = 2
 instrSize CPIR _ = 2
 instrSize CPL _  = 1
 instrSize DAA _  = 1
-instrSize DEC (r:[]) = regArgSize r
+instrSize DEC (r:_) = regArgSize r
 instrSize INC x = instrSize DEC x
 instrSize NEG _  = 2
-instrSize SBC (l:r:[]) = case l of
-    Reg8 A -> arg8Size r
-    Reg16 HL -> 2
-instrSize SUB (r:[]) = arg8Size r
+
+instrSize SBC xs = instrSize ADC xs
+instrSize SUB (r:_) = arg8Size r
 
 -- Bit ops
-instrSize AND (r:[]) = arg8Size r
-instrSize BIT (_:r:[]) = case r of
-    RegIndex _ _ -> 4
-    _ -> 2
-instrSize CCF _ = 1
-instrSize OR (r:[])  = arg8Size r
+instrSize AND (r:_) = arg8Size r
+instrSize OR  xs = instrSize AND xs
+instrSize XOR xs = instrSize AND xs
+
+instrSize BIT (_:RegIndex{}:_) = 4
+instrSize BIT _ = 2
 instrSize RES args   = instrSize BIT args
-instrSize SCF _  = 1
 instrSize SET args   = instrSize BIT args
-instrSize XOR (r:[]) = arg8Size r
+
+instrSize CCF _ = 1
+instrSize SCF _ = 1
 
 -- Shift/Rotate ops
-instrSize RL (r:[]) = regArgSize r + 1
-instrSize RLA _  = 1
+instrSize RL (r:_) = regArgSize r + 1
 instrSize RLC args = instrSize RL args
-instrSize RLCA _ = 1
-instrSize RLD _  = 2
-instrSize RR args  = instrSize RL args
-instrSize RRA _  = 1
+instrSize RR  args = instrSize RL args
 instrSize RRC args = instrSize RL args
-instrSize RRCA _ = 1
-instrSize RRD _  = 2
 instrSize SLA args = instrSize RL args
 instrSize SRA args = instrSize RL args
 instrSize SRL args = instrSize RL args
+
+instrSize RLA _  = 1
+instrSize RLCA _ = 1
+instrSize RRA _  = 1
+instrSize RRCA _ = 1
+instrSize RLD _  = 2
+instrSize RRD _  = 2
 
 -- Control ops
 instrSize CALL _ = 3
@@ -136,3 +136,5 @@ instrSize OTIR _ = 2
 instrSize OUT _  = 2
 instrSize OUTD _ = 2
 instrSize OUTI _ = 2
+
+instrSize _ _ = 0

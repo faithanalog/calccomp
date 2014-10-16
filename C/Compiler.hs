@@ -1,9 +1,16 @@
+{-# LANGUAGE QuasiQuotes #-}
 module C.Compiler (compileTree) where
 
 import qualified C.Expr as C
 import C.Expr (Op)
 import Data.Hashable (hash)
 import Data.Maybe
+
+import Asm.QQ
+import Asm.Expr (Register(..), Instruction(..), Condition(..), litNum, litLbl, reg)
+import qualified Asm.Parser as A
+
+import qualified Asm.Expr as A
 import qualified Data.Map.Strict as Map
 
 type Id = String
@@ -14,15 +21,13 @@ data FuncDef = FuncDef Id [VarDef] [VarDef] [C.Expr] deriving (Eq)
 --TODO Transform C AST to a bunch of these things
 data Expr = FuncCall FuncDef [Expr]
           | Var VarDef
-          | Num Integer
+          | Num Int
           | String String
           | Binop Op Expr Expr
           | Asm String
           | Nop
 
 data Ctx = Ctx [FuncDef] [VarDef]
-
-data Register = IXH | IXL | IYH | IYL | A | B | C | D | E | H | L | BC | DE | HL | IX | IY deriving (Show,Ord,Eq)
 
 sizeOf = C.sizeOf;
 
@@ -32,53 +37,29 @@ regLsb r
     | r == BC = C
     | r == DE = E
     | r == HL = L
-    | r == IX = IXL
-    | r == IY = IYL
 
 regMsb :: Register -> Register
 regMsb r
     | r == BC = B
     | r == DE = D
     | r == HL = H
-    | r == IX = IXH
-    | r == IY = IYH
 
-asmHeader :: String -> String -> String
-asmHeader varName "ti84+cse" = unlines [
-        ".nolist",
-        ".global",
-        "#include \"ti84pcse.inc\"",
-        ".endglobal",
-        ".list",
-        ".variablename " ++ varName,
-        ".org UserMem-2",
-        ".db tExtTok,tAsm84CCmp"
-    ] ++ tabLines [
-        "ld ix,saveSScreen + 300h",
-        "call main",
-        "ret"
-    ]
+asmHeader :: String -> [A.Expr]
+asmHeader "ti84pcse" = [asm|
+    .org UserMem - 2
+    .db tExtTok, tAsm84CCmp
+    ld ix, saveSScreen + 300h
+    call main
+    ret
+|]
 
-asmHeader varName "ti83+" = unlines [
-        ".nolist",
-        ".global",
-        "#include \"ti83plus.inc\"",
-        ".endglobal",
-        ".list",
-        ".variablename " ++ varName,
-        ".org UserMem-2",
-        ".db t2ByteTok,tAsmCmp"
-    ] ++ tabLines [
-        "ld ix,saveSScreen + 300h",
-        "call main",
-        "ret"
-    ]
-
-tabLines :: [String] -> String
-tabLines = unlines . (map ('\t':))
-
-tabLines' :: [String] -> String
-tabLines' = drop 1 . tabLines
+asmHeader "ti83p" = [asm|
+    .org UserMem - 2
+    .db t2ByteTok, tAsmCmp
+    ld ix, saveSScreen + 300h
+    call main
+    ret
+|]
 
 strLabel :: String -> String
 strLabel str = "STRCONST_" ++ show (toInteger (hash str) + (2^64))
@@ -86,37 +67,36 @@ strLabel str = "STRCONST_" ++ show (toInteger (hash str) + (2^64))
 localVars :: [C.Expr] -> [VarDef]
 localVars xprs = reverse $ varTable xprs [] 0
     where varTable [] vars _ = vars
-          varTable ((C.VarDef name vtype):xprs) vars offs =
+          varTable (C.VarDef name vtype:xprs) vars offs =
               varTable xprs (VarDef ('_':name) (sizeOf vtype) offs:vars) (offs + sizeOf vtype)
           varTable (expr:xprs) vars offs = varTable xprs vars offs
 
-varDefLocal :: VarDef -> String
-varDefLocal (VarDef name _ offs) = name ++ " = " ++ show offs
+varDefLocal :: VarDef -> A.Expr
+varDefLocal (VarDef name _ offs) = A.Define name $ litNum offs
 
-storeRegLocal :: Register -> VarDef -> [String]
-storeRegLocal reg (VarDef var size _)
-    | size == 1 && reg > L = [lsb $ regLsb reg]
-    | reg == HL = [lsb L, msb H]
-    | reg == DE = [lsb E, msb D]
-    | reg == BC = [lsb C, msb B]
-    | reg <= L = lsb reg:if size == 2 then [zeroMsb] else []
+storeRegLocal :: Register -> VarDef -> [A.Expr]
+storeRegLocal src (VarDef var size _)
+    | size == 1 && src > L = [lsb $ regLsb src]
+    | src == HL = [lsb L, msb H]
+    | src == DE = [lsb E, msb D]
+    | src == BC = [lsb C, msb B]
+    | src <= L = lsb src:[zeroMsb | size == 2]
     | otherwise = []
-    where lsb r = "ld (ix + " ++ var ++ ")," ++ show r
-          msb r = "ld (ix + 1 + " ++ var ++ ")," ++ show r
-          zeroMsb = "ld (ix + 1),0"
+    where lsb r   = A.Instr LD [A.RegIndex IX $ litLbl var, reg r]
+          msb r   = A.Instr LD [A.RegIndex IX $ A.Binop A.Add (litLbl var) (litNum 1), reg r]
+          zeroMsb = A.Instr LD [A.RegIndex IX $ litNum 1, litNum 0]
 
-loadRegLocal :: Register -> VarDef -> [String]
-loadRegLocal reg (VarDef var size _)
-    | size == 1 && reg > L = [lsb $ regLsb reg, zero $ regMsb reg]
-    | reg == HL = [lsb L, msb H]
-    | reg == DE = [lsb E, msb D]
-    | reg == BC = [lsb C, msb B]
-    | reg <= L = [lsb reg]
+loadRegLocal :: Register -> VarDef -> [A.Expr]
+loadRegLocal src (VarDef var size _)
+    | size == 1 && src > L = [lsb $ regLsb src, zero $ regMsb src]
+    | src == HL = [lsb L, msb H]
+    | src == DE = [lsb E, msb D]
+    | src == BC = [lsb C, msb B]
+    | src <= L = [lsb src]
     | otherwise = []
-    where lsb r = "ld " ++ show r ++ ",(ix + " ++ var ++ ")"
-          msb r = "ld " ++ show r ++ ",(ix + 1 + " ++ var ++ ")"
-          zero r = "ld " ++ show r ++ ",0"
-
+    where lsb r  = A.Instr LD [reg r, A.RegIndex IX $ litLbl var]
+          msb r  = A.Instr LD [reg r, A.RegIndex IX $ A.Binop A.Add (litLbl var) (litNum 1)]
+          zero r = A.Instr LD [reg r, litNum 0]
 
 
 findVar' :: [VarDef] -> String -> VarDef
@@ -151,69 +131,66 @@ convFunc (C.FuncDef nm ret fnargs body) = FuncDef nm args vars body
 convFuncBody :: Ctx -> [C.Expr] -> [Expr]
 convFuncBody ctx = map (convExpr ctx)
 
-
-compileTree :: [C.Expr] -> String
-compileTree tree = asmHeader "TESTC" "ti83+" ++ "\n" ++ tabLines (concat (map funcAsm funcs))
-    where funcDefs = map convFunc [fn | fn@(C.FuncDef {}) <- tree]
-          funcs = [(fn, convFuncBody (Ctx funcDefs vs) body) |
-                        fn@(FuncDef _ _ vs body) <- funcDefs]
-
-
-funcAsm :: (FuncDef, [Expr]) -> [String]
-funcAsm ((FuncDef name args vars _), body) =
-    prologue ++ varDefs ++ argDefs ++ concat (map exprAsm body) ++ epilogue
-    where label = name ++ ":"
-          varSize = sum [s | (VarDef _ s _) <- vars]
+funcAsm :: (FuncDef, [Expr]) -> [A.Expr]
+funcAsm (FuncDef name args vars _, body) =
+    prologue ++ varDefs ++ argDefs ++ concatMap exprAsm body ++ epilogue
+    where label = name
+          negVarSize = sum [s | (VarDef _ s _) <- vars] * (-1)
           varDefs = map varDefLocal vars
           argDefs = concat $ zipWith storeRegLocal [HL,DE,BC] args
-          prologue = [
-                  label,
-                  ".module " ++ name
-              ] ++ if null vars then [] else [
-                  "push ix",
-                  "ld de," ++ show (-varSize),
-                  "add ix,de"
-              ]
-          epilogue = (if null vars then [] else [
-                  "pop ix"
-              ]) ++ [
-                  "ret",
-                  ".endmodule"
-              ]
+          prologue = A.LabelDef label : if null vars then [] else [asm|push ix \ ld de,@{negVarSize} \ add ix,de|]
+          epilogue = if null vars then [asm|ret|] else [asm|pop ix \ ret|]
 
-exprAsm :: Expr -> [String]
-exprAsm (FuncCall (FuncDef name _ _ _) args) = ldArgs args ++ ["call " ++ name]
+exprAsm :: Expr -> [A.Expr]
+exprAsm (FuncCall (FuncDef name _ _ _) args) = ldArgs args ++ [asm|call @l{name}|]
     where ldArgs [] = []
           ldArgs (x:[]) = exprAsm x
           ldArgs (x:y:[]) = concat [
                         exprAsm y,
-                        ["push hl"],
+                        [asm|push hl|],
                         exprAsm x,
-                        ["pop de"]
+                        [asm|pop de|]
                     ]
           ldArgs (x:y:z:[]) = concat [
                         exprAsm z,
-                        ["push hl"],
+                        [asm|push hl|],
                         exprAsm y,
-                        ["push hl"],
+                        [asm|push hl|],
                         exprAsm x,
-                        ["pop de",
-                        "pop bc"]
+                        [asm|pop de \ pop bc|]
                     ]
           ldArgs _ = []
 
 exprAsm (Binop C.Assign (Var var) xpr) = exprAsm xpr ++ storeRegLocal HL var
 
-exprAsm (Binop C.Add x y) = exprAsm x ++ ["push hl"] ++ exprAsm y ++
-    ["pop de", "add hl,de"]
 
-exprAsm (Binop C.Sub x y) = exprAsm y ++ ["push hl"] ++ exprAsm x ++
-    ["pop de", "or a", "sbc hl,de"]
+exprAsm (Binop C.Add x y) = concat [
+        exprAsm y,
+        [asm|push hl|],
+        exprAsm x,
+        [asm|pop de \ add hl,de|]
+    ]
 
-exprAsm (Asm str) = lines str
+exprAsm (Binop C.Sub x y) = concat [
+        exprAsm y,
+        [asm|push hl|],
+        exprAsm x,
+        [asm|pop de \ or a \ sbc hl,de|]
+    ]
+
+exprAsm (Asm str) = case A.parseText "" str of
+    Left err -> error err
+    Right ast -> ast
 
 exprAsm (Var var) = loadRegLocal HL var
-exprAsm (Num x) = ["ld hl," ++ show x]
-exprAsm (String str) = ["ld hl," ++ strLabel str]
-exprAsm (Binop op x y) = [""]
-exprAsm x = [""]
+exprAsm (Num x) = [asm|ld hl,@{x}|]
+exprAsm (String str) = [asm|ld hl,@l{str}|]
+exprAsm (Binop op x y) = []
+exprAsm x = []
+
+
+compileTree :: [C.Expr] -> [A.Expr]
+compileTree tree = asmHeader "ti84pcse" ++ concatMap funcAsm funcs
+    where funcDefs = map convFunc [fn | fn@(C.FuncDef {}) <- tree]
+          funcs = [(fn, convFuncBody (Ctx funcDefs vs) body) |
+                        fn@(FuncDef _ _ vs body) <- funcDefs]

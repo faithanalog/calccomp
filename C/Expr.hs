@@ -14,7 +14,7 @@ data Expr = FuncDef Id DataType FuncArgs FuncBody
           | VarDef Id DataType
           | FuncCall Id FuncArgs
           | Var Id
-          | Num Integer
+          | Num Int
           | String String
           | Binop Op Expr Expr
           | Asm String

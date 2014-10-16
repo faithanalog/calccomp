@@ -18,4 +18,11 @@ cabal-version:       >=1.8
 executable calccomp
   main-is: Main.hs
   -- other-modules:
-  build-depends:       base ==4.6.*, parsec, MissingH, bytestring, containers, hashable
+  build-depends:       base ==4.6.*,
+                       parsec,
+                       MissingH,
+                       bytestring,
+                       containers,
+                       hashable,
+                       syb,
+                       template-haskell
