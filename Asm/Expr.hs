@@ -70,10 +70,8 @@ data Expr = LabelDef String
           | String String
           | Binop Op Expr Expr
           | Parens Expr
-          | AntiQuoteLbl String
-          | AntiQuoteNum String
+          | AntiQuote String
           | AntiQuoteStr String
-          | AntiQuoteReg String
           deriving (Eq,Typeable,Data)
 
 instance Show Expr where
@@ -95,10 +93,8 @@ instance Show Expr where
     show (String str) = show str
     show (Binop op lft rt) = showOpArg lft ++ " " ++ show op ++ " " ++ showOpArg rt
     show (Parens xpr) = "(" ++ show xpr ++ ")"
-    show (AntiQuoteLbl x) = "@l{" ++ x ++ "}"
+    show (AntiQuote x) = "@{" ++ x ++ "}"
     show (AntiQuoteStr x) = "@s{" ++ x ++ "}"
-    show (AntiQuoteReg x) = "@r{" ++ x ++ "}"
-    show (AntiQuoteNum x) = "@{" ++ x ++ "}"
 
 -- Top level binary ops should have no parentheses, nested ones should
 showOpArg :: Expr -> String

@@ -32,11 +32,14 @@ instrSize LD (l:r:[]) = case l of
         _ -> reg8size
     Reg16 HL -> regHL
     Reg16Index _ -> regHL + 1
-    Reg16 SP -> regArgSize r
+    Reg16 SP -> case r of
+                  Reg16 HL -> 1
+                  Reg16Index _ -> 2
+                  _ -> reg16size
 
     Reg8 _ -> reg8size
     Reg16 _ -> reg16size
-    RegIndex _ _ -> reg8size + 1
+    RegIndex _ _ -> reg8size + 2
     RegIndir _ -> 1
 
     AddrIndir _ -> case r of
@@ -114,6 +117,7 @@ instrSize RRD _  = 2
 -- Control ops
 instrSize CALL _ = 3
 instrSize DJNZ _ = 2
+instrSize JP (Reg8 HL':_) = 1
 instrSize JP _   = 3
 instrSize JR _   = 2
 instrSize NOP _  = 1

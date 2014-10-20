@@ -142,7 +142,7 @@ funcAsm (FuncDef name args vars _, body) =
           epilogue = if null vars then [asm|ret|] else [asm|pop ix \ ret|]
 
 exprAsm :: Expr -> [A.Expr]
-exprAsm (FuncCall (FuncDef name _ _ _) args) = ldArgs args ++ [asm|call @l{name}|]
+exprAsm (FuncCall (FuncDef name _ _ _) args) = ldArgs args ++ [asm|call @{name}|]
     where ldArgs [] = []
           ldArgs (x:[]) = exprAsm x
           ldArgs (x:y:[]) = concat [
@@ -184,7 +184,7 @@ exprAsm (Asm str) = case A.parseText "" str of
 
 exprAsm (Var var) = loadRegLocal HL var
 exprAsm (Num x) = [asm|ld hl,@{x}|]
-exprAsm (String str) = [asm|ld hl,@l{str}|]
+exprAsm (String str) = [asm|ld hl,@{str}|]
 exprAsm (Binop op x y) = []
 exprAsm x = []
 

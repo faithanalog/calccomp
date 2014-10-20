@@ -92,7 +92,7 @@ instrBytes LD (Reg8 R:Reg8 A:_)                = w8l [0xED, 0x4F]
 instrBytes LD (Reg16 SP:Reg16 HL:_)            = w8 0xF9
 instrBytes LD (Reg16 SP:Reg16Index r:_)        = regIndex r <> w8 0xF9
 instrBytes LD (Reg16 l:Num r:_)                = w8 (regBits 1 l 4) <> w16 r
-instrBytes LD (Reg16Index l:Num r:_)           = regIndex l <> w8 21 <> w16 r
+instrBytes LD (Reg16Index l:Num r:_)           = regIndex l <> w8 0x21 <> w16 r
 instrBytes LD (Reg16 HL:AddrIndir addr:_)      = w8 0x2A <> w16 addr
 instrBytes LD (Reg16 l:AddrIndir addr:_)       = w8l [0xED, regBits 0x4B l 4] <> w16 addr
 instrBytes LD (Reg16Index l:r@(AddrIndir{}):_) = regIndex l <> instrBytes LD [Reg16 HL, r]
@@ -101,8 +101,8 @@ instrBytes LD (AddrIndir addr:Reg16 r:_)       = w8l [0xED, regBits 0x43 r 4] <>
 instrBytes LD (l@(AddrIndir{}):Reg16Index r:_) = regIndex r <> instrBytes LD [l, Reg16 HL]
 instrBytes LD (Reg8 l:Reg8 r:_)                = w8 $ regBits 0x40 l 3 + regBits 0 r 0
 instrBytes LD (Reg8 l:Num r:_)                 = w8l [regBits 6 l 3, r]
-instrBytes LD (Reg8 l:RegIndex r o:_)          = regIndex r <> w8l [regBits 6 l 3, o]
-instrBytes LD (RegIndex l o:Reg8 r:_)          = regIndex l <> w8l [regBits 0x70 l 0, o]
+instrBytes LD (Reg8 l:RegIndex r o:_)          = regIndex r <> w8l [regBits 0x46 l 3, o]
+instrBytes LD (RegIndex l o:Reg8 r:_)          = regIndex l <> w8l [regBits 0x70 r 0, o]
 instrBytes LD (RegIndex l o:Num r:_)           = regIndex l <> w8l [0x36, o, r]
 
 instrBytes LDD _  = w8l [0xED, 0xA8]
@@ -201,6 +201,8 @@ instrBytes DJNZ (Num o:_) = w8l [0x10, o]
 
 instrBytes JP (Num addr:_) = w8 0xC3 <> w16 addr
 instrBytes JP (Cond c:Num addr:_) = condBits 0xC2 c <> w16 addr
+
+instrBytes JP (Reg8 HL':_) = w8 0xE9
 
 instrBytes JR (Num o:_) = w8l [0x18, o]
 instrBytes JR (Cond c:Num o:_) = condBits 0x20 c <> w8 o

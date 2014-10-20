@@ -109,7 +109,7 @@ allocVars xprs lbls varlocs = do
           allocAll [] _ out = Right out
           allocAll ((name,size):vars) varlocs out = do
               (addr,newlocs) <- allocMem size varlocs
-              allocAll vars newlocs ((name,addr):out)
+              allocAll vars newlocs ((map toUpper name,addr):out)
 
 allExprBytes :: [Expr] -> Labels -> Either String Builder
 allExprBytes xprs labels = bytes xprs 0

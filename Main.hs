@@ -4,22 +4,38 @@ import qualified C.Compiler as C
 import qualified Asm.Parser as Asm
 import qualified Asm.Assembler as Asm
 import qualified Asm.Preprocess as Asm
+import qualified FORTH.Parser as FORTH
+import qualified FORTH.Compiler as FORTH
 import Asm.QQ
 import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
 main = do
-    ccode <- readFile "test.c"
-    let tree = C.parseExpr ccode
-    let asm = C.compileTree tree
-
-    putStrLn . Asm.printTree $ asm
-
+    forthcode <- readFile "test.forth"
     header <- Asm.parseFile "ti84pcse.inc"
+
+    let Right x = FORTH.compileText forthcode
+    putStrLn . Asm.printTree $ x
+
     let file = do
+        asm <- FORTH.compileText forthcode
         incs <- header
         bytes <- Asm.assemble $ incs ++ asm
         return $ Asm.makeFile "TESTPRG" Asm.EditLockedProg bytes
+
+
+
+    {-ccode <- readFile "test.c"-}
+    {-let tree = C.parseExpr ccode-}
+    {-let asm = C.compileTree tree-}
+
+    {-putStrLn . Asm.printTree $ asm-}
+
+    {-header <- Asm.parseFile "ti84pcse.inc"-}
+    {-let file = do-}
+        {-incs <- header-}
+        {-bytes <- Asm.assemble $ incs ++ asm-}
+        {-return $ Asm.makeFile "TESTPRG" Asm.EditLockedProg bytes-}
 
     case file of
         Left err -> putStrLn $ "ERROR || " ++ err

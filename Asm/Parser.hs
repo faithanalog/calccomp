@@ -1,4 +1,8 @@
-module Asm.Parser (printTree, parseText, parseFile, parseStatement) where
+module Asm.Parser (printTree
+                  , parseText
+                  , parseFile
+                  , parseStatement
+                  , parseArg) where
 
 import Asm.Expr
 import Asm.Preprocess
@@ -284,12 +288,12 @@ parensExpr p = do
     xpr <- parens p
     return $ Parens xpr
 
-antiQuoteLbl :: Parser Expr
-antiQuoteLbl = do
-    symbol "@l{"
+antiQuoteExpr :: Parser Expr
+antiQuoteExpr = do
+    symbol "@{"
     q <- many $ noneOf "}"
     symbol "}"
-    return $ AntiQuoteLbl q
+    return $ AntiQuote q
 
 antiQuoteStr :: Parser Expr
 antiQuoteStr = do
@@ -298,15 +302,7 @@ antiQuoteStr = do
     symbol "}"
     return $ AntiQuoteStr q
 
-antiQuoteNum :: Parser Expr
-antiQuoteNum = do
-    symbol "@{"
-    q <- many $ noneOf "}"
-    symbol "}"
-    return $ AntiQuoteNum q
-
-antiQuote :: Parser Expr
-antiQuote = try antiQuoteNum <|> try antiQuoteStr <|> antiQuoteLbl
+antiQuote = try antiQuoteStr <|> antiQuoteExpr
 
 binOp :: Parser Expr
 binOp = chainl1 (try num <|> try antiQuote <|> try labelref <|> try (parensExpr mathExpr)) mathOp
@@ -331,7 +327,7 @@ argExpr = try register
 
 
 statement :: Parser Expr
-statement = try directive <|> try constAssign <|> try asmlabel <|> instr
+statement = try antiQuoteExpr <|> try directive <|> try constAssign <|> try asmlabel <|> instr
 
 parseStatements :: Parser [Expr]
 parseStatements = do
@@ -357,6 +353,12 @@ removeParens = map conv
           conv (RegIndex r xpr) = RegIndex r (conv xpr)
           conv (Instr i xs) = Instr i (removeParens xs)
           conv xpr = xpr
+
+-- Parses an argument
+parseArg :: String -> Either String Expr
+parseArg x = case parse (whiteSpace >> argExpr) "" x of
+               Left err -> Left $ show err
+               Right ast -> Right . head . removeParens . indirPass $ [ast]
 
 -- Parses a single statement
 parseStatement :: String -> Either String Expr
