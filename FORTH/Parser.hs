@@ -82,25 +82,24 @@ varDef = do
     whiteSpace
     VarDef <$> identifier
 
-wordDef :: Parser Expr
-wordDef = do
-    stringNoCase "word"
+baseWordDef :: String -> Parser a -> Parser (String, a)
+baseWordDef symbol bodyParser = do
+    stringNoCase symbol
     whiteSpace
     nm <- identifier
-    whiteSpace >> char '{'
-    whiteSpace
-    body <- many (lexeme forthExpr)
+    whiteSpace >> char '{' >> whiteSpace
+    b <- bodyParser
     char '}'
+    return (nm, b)
+
+wordDef :: Parser Expr
+wordDef = do
+    (nm, body) <- baseWordDef "word" (many $ lexeme forthExpr)
     return $ WordDef nm body
 
 wordDefAsm :: Parser Expr
 wordDefAsm = do
-    stringNoCase "asmword"
-    whiteSpace
-    nm <- identifier
-    whiteSpace >> char '{'
-    body <- many $ noneOf "}"
-    char '}'
+    (nm, body) <- baseWordDef "asmword" (many $ noneOf "}")
     return $ WordDefAsm nm body
 
 forthExpr :: Parser Expr
