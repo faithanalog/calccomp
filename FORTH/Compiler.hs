@@ -30,39 +30,36 @@ getDepends xprs = nub . concat $ map depends rtns
     where toks = [t | (Tok t) <- xprs]
           rtns = mapMaybe stdlibAsm toks
 
+wordPrologue nm = [asm|
+    @{"WDEF_" ++ nm ++ ":"}
+    pop hl
+    dec ix
+    ld (ix),h
+    dec ix
+    ld (ix),l
+    @{"RWDEF_" ++ nm ++ ":"} ;For recursing
+|]
+
+wordEpilogue = [asm|
+    ld l,(ix)
+    inc ix
+    ld h,(ix)
+    inc ix
+    jp (hl)
+|]
+
 defWord :: Strings -> Vars -> Expr -> [A.Expr]
-defWord strs vars (WordDef nm prebody) = prologue ++ code ++ epilogue
-    where code = concatMap (compileExpr strs vars) body
-          body = Tok ">R" : prebody
-          prologue = [asm|@{"WDEF_" ++ nm ++ ":"}|]
-          epilogue = [asm|
-              ld l,(ix)
-              inc ix
-              ld h,(ix)
-              inc ix
-              jp (hl)
-          |]
+defWord strs vars (WordDef nm body) = wordPrologue nm ++ code ++ wordEpilogue
+    where code = concatMap (compileBody strs vars) body
+          compileBody strs vars x = case x of
+              Tok "RECURSE" -> [asm|jp @{"RWDEF_" ++ nm}|]
+              _ -> compileExpr strs vars x
 
 defWordAsm :: Expr -> [A.Expr]
-defWordAsm (WordDefAsm nm body) = prologue ++ code ++ epilogue
+defWordAsm (WordDefAsm nm body) = wordPrologue nm ++ code ++ wordEpilogue
     where code = case A.parseText "" body of
               Left err -> error err
               Right xs -> xs
-          prologue = [asm|
-              @{"WDEF_" ++ nm ++ ":"}
-              pop hl
-              dec ix
-              ld (ix),h
-              dec ix
-              ld (ix),l
-          |]
-          epilogue = [asm|
-              ld l,(ix)
-              inc ix
-              ld h,(ix)
-              inc ix
-              jp (hl)
-          |]
 
 defString :: (String, String) -> [A.Expr]
 defString (s,lbl) = [asm|@{lbl ++ ":"} \ .db @s{s},0|]
@@ -81,6 +78,48 @@ compileExpr _ vars (Tok t) = case stdlibAsm t of
                              Just x -> code x
 compileExpr _ _ _ = []
 
+asmStart "ti84pcse" = [asm|
+    CODE_START:
+    .org UserMem - 2
+    .db tExtTok, tAsm84CCmp
+    .varloc 4000h, 3800h     ;Leave 800h for R stack
+    oldStack = plotSScreen + 768 - 2
+    oldPage  = plotSScreen + 768 - 3
+    ld (oldStack),sp
+    in a,(6)
+    ld (oldPage),a
+    ld a,87h
+    out (6),a
+    ld ix,4000h + 4000h      ;R stack is 800h
+    ld sp,saveSScreen + 300h ;Prog stack is 300h
+|]
+
+asmStart "ti83p" = [asm|
+    CODE_START:
+    .org UserMem - 2
+    .db t2ByteTok, tAsmCmp
+    .varloc appBackupScreen, 300h
+    .var word, oldStack
+    ld (oldStack),sp
+    ld ix,statVars + 531     ;R stack is 531
+    ld sp,saveSScreen + 300h ;Prog stack is 300h
+|]
+
+asmEnd "ti84pcse" = [asm|
+    ld sp,(oldStack)
+    ld a,(oldPage)
+    out (6),a
+    ret
+    CODE_END:
+|]
+
+asmEnd "ti83p" = [asm|
+    ld sp,(oldStack)
+    b_call(_DelRes)
+    ret
+    CODE_END:
+|]
+
 compileExprs :: [Expr] -> [A.Expr]
 compileExprs xprs = concatMap concat [
         map defVar vars,
@@ -92,22 +131,8 @@ compileExprs xprs = concatMap concat [
     ]
     where strings = getStrings xprs
           vars = getVars xprs
-          code = [prologue] ++ map (compileExpr strings vars) xprs ++ [epilogue]
-          prologue = [asm|
-              CODE_START:
-              .org UserMem - 2
-              .db tExtTok, tAsm84CCmp
-              .varloc statVars, 531
-              .var word, oldStack
-              ld (oldStack),sp
-              ld ix,saveSScreen + 300h
-          |]
-          epilogue = [asm|
-              ld sp,(oldStack)
-              b_call(_DelRes)
-              ret
-              CODE_END:
-          |]
+          code = [asmStart platform] ++ map (compileExpr strings vars) xprs ++ [asmEnd platform]
+          platform = "ti84pcse"
 
 compileText :: String -> Either String [A.Expr]
 compileText str = do

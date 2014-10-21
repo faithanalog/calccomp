@@ -238,8 +238,8 @@ instrBytes IM (Num m:_) = w8 0xED <> w8 (case m of
 instrBytes IN (Reg8 A:AddrIndir port:_) = w8l [0xDB, port]
 instrBytes IN (Reg8 l:RegIndir C:_) = w8l [0xEB, regBits 0x40 l 3]
 
-instrBytes OUT (Reg8 A:AddrIndir port:_) = w8l [0xD3, port]
-instrBytes OUT (Reg8 l:RegIndir C:_) = w8l [0xEB, regBits 0x41 l 3]
+instrBytes OUT (AddrIndir port:Reg8 A:_) = w8l [0xD3, port]
+instrBytes OUT (RegIndir C:Reg8 r:_) = w8l [0xEB, regBits 0x41 r 3]
 
 instrBytes IND _  = w8l [0xED, 0xAA]
 instrBytes INDR _ = w8l [0xED, 0xBA]
