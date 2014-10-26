@@ -1,47 +1,38 @@
-{-# LANGUAGE QuasiQuotes #-}
-module FORTH.Compiler (compileExprs, compileText) where
+{-# LANGUAGE QuasiQuotes, PackageImports #-}
+module FORTH.Compiler (compileProg, compileText) where
 
 import FORTH.Parser
 import FORTH.Stdlib
 import Asm.QQ
 import Data.Maybe
 import Data.List
+import Data.List.Utils
+import Control.Applicative
 import qualified Asm.Expr as A
 import qualified Asm.Parser as A
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
-import Control.Monad.State.Lazy
+import "mtl" Control.Monad.State.Lazy
 
 type Strings = Map.Map String String
 type Vars    = [String]
 type Ifs     = [String]
 
+data RtnWord = RtnWord String [A.Expr]
+
 data FState = FState { strs :: Strings
                      , vars :: Vars
                      , ifs :: Ifs
-                     , ifGen :: LabelGen
-                     , usedWords :: Set.Set WordDefAsm
-                     , curWord :: String
+                     , ctrlGen :: LabelGen
+                     , wordLbls :: Map.Map String String
                      }
 
 -- Pushes an IF onto the 'ifs' stack, and returns the IF label as well as the new state
 pushIf :: State FState String
 pushIf = do
+    newIf <- newLabel
     state <- get
-    let (newIf, gen) = genLabel (ifGen state)
-    put state { ifs = newIf:ifs state, ifGen = gen }
+    put state { ifs = newIf:ifs state }
     return newIf
-
--- pushIf :: State -> (String, State)
--- pushIf state = (newIf, state { ifs = (newIf:ifs state), ifGen = gen })
---     where (newIf, gen) = genLabel (ifGen state)
-
--- Pushes an 'ELSE' statement onto the 'ifs' stack, so the THEN word will
--- know we already popped the IF label
-pushElse :: State FState ()
-pushElse = do
-    state <- get
-    put state { ifs = "|ELSE|":ifs state }
 
 popIf :: State FState (Maybe String)
 popIf = do
@@ -52,10 +43,28 @@ popIf = do
             put state { ifs = tail xs }
             return . Just . head $ xs
 
--- popIf :: State -> (Maybe String, State)
--- popIf state
---     | null (ifs state) = (Nothing, state)
---     | otherwise = let (x:xs) = ifs state in (Just x, state { ifs = xs })
+callWord :: String -> State FState [A.Expr]
+callWord t = do
+    lbl <- wordLabel t
+    return [asm|call @{lbl}|]
+
+wordLabel :: String -> State FState String
+wordLabel nm = do
+    lbl <- Map.lookup nm . wordLbls <$> get
+    case lbl of
+        Just x -> return x
+        Nothing -> do
+            x <- newLabel
+            s <- get
+            put s { wordLbls = Map.insert nm x (wordLbls s) }
+            return x
+
+newLabel :: State FState String
+newLabel = do
+    state <- get
+    let (lbl, gen) = genLabel (ctrlGen state)
+    put state { ctrlGen = gen }
+    return lbl
 
 data LabelGen = LabelGen String Int
 
@@ -65,24 +74,8 @@ makeLabelGen prefix = LabelGen prefix 0
 genLabel :: LabelGen -> (String, LabelGen)
 genLabel (LabelGen p c) = (p ++ "_" ++ show c, LabelGen p (c + 1))
 
-getStrings :: [Expr] -> Strings
-getStrings xprs
-    | null strs = Map.empty
-    | otherwise = Map.fromList [strPair x | x <- [0..length strs - 1]]
-    where strs = findStrs xprs
-          strPair x = (strs !! x, "STRCNST_" ++ show x)
-          findStrs xs = [x | (Str x) <- xs] ++ concat [findStrs x | (WordDef _ x) <- xs]
-
-getVars :: [Expr] -> Vars
-getVars xprs = [x | (VarDef x) <- xprs] ++ concat [getVars x | (WordDef _ x) <- xprs]
-
-getDepends :: [Expr] -> [Dependency]
-getDepends xprs = nub . concat $ map depends rtns
-    where toks = [t | (Tok t) <- xprs]
-          rtns = mapMaybe stdlibAsm toks
-
 wordPrologue nm = [asm|
-    @{"WDEF_" ++ nm ++ ":"}
+    @{nm ++ ":"}
     pop hl
     dec ix
     ld (ix),h
@@ -99,23 +92,32 @@ wordEpilogue = [asm|
     jp (hl)
 |]
 
+defWordFull :: String -> [A.Expr] -> State FState [A.Expr]
+defWordFull nm code = do
+    lbl <- wordLabel nm
+    return $ wordPrologue lbl ++ code ++ wordEpilogue
+
 defWord :: Expr -> State FState [A.Expr]
-defWord = do
+defWord (WordDef nm body) = do
+    lbl <- wordLabel nm
+    code <- concat <$> mapM (compileBody lbl) body
+    defWordFull nm code
+    where compileBody lbl x = case x of
+              Tok "RECURSE" -> return [asm|jp @{"RWDEF_" ++ lbl}|]
+              _ -> compileExpr x
 
-
--- Not done, rewrite body
-defWord :: State -> Expr -> (State, [A.Expr])
-defWord strs vars (WordDef nm body) = wordPrologue nm ++ code ++ wordEpilogue
-    where code = concatMap (compileBody strs vars) body
-          compileBody strs vars x = case x of
-              Tok "RECURSE" -> [asm|jp @{"RWDEF_" ++ nm}|]
-              _ -> compileExpr strs vars x
-
-defWordAsm :: Expr -> [A.Expr]
-defWordAsm (WordDefAsm nm body) = wordPrologue nm ++ code ++ wordEpilogue
+defWordAsm :: Expr -> State FState [A.Expr]
+defWordAsm (WordDefAsm nm body) = defWordFull nm code
     where code = case A.parseText "" body of
               Left err -> error err
               Right xs -> xs
+
+defRtnWord :: RtnWord -> State FState [A.Expr]
+-- Stdlib routines handle returning themself, so we shouldnt wrap them in the prologue/epilogue
+defRtnWord (RtnWord nm body) = do
+    lbl <- wordLabel nm
+    return $ [asm|@{lbl ++ ":"}|] ++ body
+
 
 defString :: (String, String) -> [A.Expr]
 defString (s,lbl) = [asm|@{lbl ++ ":"} \ .db @s{s},0|]
@@ -123,56 +125,61 @@ defString (s,lbl) = [asm|@{lbl ++ ":"} \ .db @s{s},0|]
 defVar :: String -> [A.Expr]
 defVar v = [asm|.var word, @{"VAR_" ++ v}|]
 
-compileExpr :: State -> Expr -> ([A.Expr], State)
-compileExpr state (Num x) = ([asm|ld hl,@{x} \ push hl|], state)
-compileExpr state (Str s) =
-    let Just lbl = Map.lookup s (strs state)
-    in ([asm|ld hl,@{lbl} \ push hl|], state)
+-- Compile an expression into the resulting ASM code
+compileExpr :: Expr -> State FState [A.Expr]
+compileExpr (Num x) = return [asm|ld hl,@{x} \ push hl|]
+compileExpr (Str s) = do
+    Just lbl <- Map.lookup s . strs <$> get
+    return [asm|ld hl,@{lbl} \ push hl|]
 
-compileExpr state (Tok "IF") = ([asm|
-    pop hl
-    ld a,h
-    or l
-    jp z,@{lbl}
-|], nstate)
-    where (lbl, nstate) = pushIf state
+compileExpr (Tok "IF") = do
+    lbl <- pushIf
+    return [asm|
+        pop hl
+        ld a,h
+        or l
+        jp z,@{lbl}
+    |]
 
-compileExpr state (Tok "ELSE")
-    | isNothing lbl = error "No matching 'IF' for 'ELSE' word"
-    | otherwise = ([asm|
-        @{lbl ++ ":"}
-    |], pushElse nstate)
-    where (lbl, nstate) = popIf state
+compileExpr (Tok "ELSE") = do
+    lbl <- popIf
+    case lbl of
+        Nothing -> error "No matching 'IF' for 'ELSE' word"
+        Just x  -> do
+            let jp = "EL" ++ x
+            state <- get
+            put state { ifs = jp:ifs state }
+            -- Jump to the end label skipping the else statement
+            return [asm|jp @{jp} \ @{x ++ ":"}|]
 
-compileExpr state (Tok "THEN")
-    | isNothing lbl = error "No matching 'IF' for 'THEN' word"
-    | lbl == "|ELSE|" = ([],nstate)
-    | otherwise = ([asm|
-        @{lbl ++ ":"}
-    |], nstate)
-    where (lbl, nstate) = popIf state
+compileExpr (Tok "THEN") = do
+    lbl <- popIf
+    case lbl of
+        Nothing  -> error "No matching 'IF' or 'ELSE' for 'THEN' word"
+        Just x   -> return [asm|@{x ++ ":"}|]
 
-compileExpr state (Tok "RECURSE")
-    | null (curWord state) = error "Can not use 'RECURSE' outside of word def"
-    | otherwise = ([asm|jp @{"RWDEF_" ++ curWord state}|], state)
+compileExpr (Tok "RECURSE") = error "Can not use 'RECURSE' outside of word def"
 
-compileExpr state (Tok t)
-    | isNothing rtn = (if t `elem` vars state then ldVar else callWord, state)
-    | otherwise = (if inline x then code x else callWord,
-        state { usedWords = Set.insert rtnWordDef (usedWords state) })
+compileExpr (Tok t)
+    | isNothing rtn = do
+        state <- get
+        case t `elem` vars state of
+            True -> return [asm|ld hl,@{"VAR_" ++ t} \ push hl|]
+            False -> callWord t
+    | otherwise = do
+        let Just x = rtn
+        case inline x of
+            True -> do
+                -- Make sure inline stuff gets added to used words
+                wordLabel t
+                return $ code x
+            False -> callWord t
     where rtn = stdlibAsm t
-          rtnWordDef = let x = Just rtn in WordDefAsm t (code x)
-          callWord = [asm|call @{"WDEF_" ++ t}|]
-          ldVar    = [asm|ld hl,@{"VAR_" ++ t} \ push hl|]
 
-compileExpr state _ = ([], state)
+compileExpr _ = return []
 
-compileExprs :: State -> [Expr] -> ([A.Expr],State)
-compileExprs state xs = foldl ([],state) folder xs
-    where folder (c,s) xpr =
-              let (nc,ns) = compileExpr s xpr
-              in  (c ++ nc, ns)
 
+-- Various ASM start/end code for different calc models
 asmStart "ti84pcse" = [asm|
     CODE_START:
     .org UserMem - 2
@@ -215,23 +222,72 @@ asmEnd "ti83p" = [asm|
     CODE_END:
 |]
 
+-- Optimizations that apply to most of the code.
+optimizeAsm :: [A.Expr] -> [A.Expr]
+optimizeAsm = multiple (pass1 . pass2 . pass3)
+    where pass1 = replace [asm|push hl \ pop hl|] []
+          pass2 = replace [asm|push hl \ pop de|] [asm|ld d,h \ ld e,l|]
+          pass3 = replace [asm|push de \ pop hl|] [asm|ld h,d \ ld l,e|]
+          multiple f = f . f . f -- Really really optimize it
+
+-- Gets all defined strings and maps them to labels
+getStrings :: [Expr] -> Strings
+getStrings xprs
+    | null strs = Map.empty
+    | otherwise = Map.fromList [strPair x | x <- [0..length strs - 1]]
+    where strs = findStrs xprs
+          strPair x = (strs !! x, "STRCNST_" ++ show x)
+          findStrs xs = [x | (Str x) <- xs] ++ concat [findStrs x | (WordDef _ x) <- xs]
+
+-- Gets all defined vars
+getVars :: [Expr] -> Vars
+getVars xprs = [x | (VarDef x) <- xprs] ++ concat [getVars x | (WordDef _ x) <- xprs]
+
+-- Compiles a FORTH program into Assembly
 compileProg :: [Expr] -> [A.Expr]
-compileProg xprs = concatMap concat [
+compileProg xprs =
+    let (body, wordDefs) = flip evalState initState $ do
+        -- Get all word definitions
+        let asmWords  = [w | w@(WordDefAsm nm _) <- xprs]
+            normWords = [w | w@(WordDef nm _)    <- xprs]
+
+        -- Compile all expressions, generating word labels in the process
+        asmDefs  <- zip asmWords <$> mapM defWordAsm asmWords
+        normDefs <- zip normWords <$> mapM defWord normWords
+        body <- mapM compileExpr xprs
+
+        -- Get the word definitions actually called in the program, omit Asm for everything else
+        usedWords <- wordLbls <$> get
+        let usedAsmDefs  = [b | (WordDefAsm nm _, b) <- asmDefs, Map.member nm usedWords]
+            usedNormDefs = [b | (WordDef nm _, b) <- normDefs, Map.member nm usedWords]
+            usedRtns = [(t,rtn) | t <- Map.keys usedWords,
+                           let rtn' = stdlibAsm t,
+                           isJust rtn',
+                           let Just rtn = rtn']
+            rtnWords = [RtnWord t (code rtn) | (t,rtn) <- usedRtns, not (inline rtn)]
+            rtnDeps  = concatMap (depends . snd) usedRtns
+        usedRtnDefs <- mapM defRtnWord rtnWords
+
+        -- Return the body of the code, and all the word definitions
+        return (body, usedNormDefs ++ usedRtnDefs ++ usedAsmDefs ++ rtnDeps)
+    in optimizeAsm $ concatMap concat [
         map defVar vars,
-        code,
-        [defWord strings vars w | w@WordDef{} <- xprs],
-        [defWordAsm w | w@WordDefAsm{} <- xprs],
-        [c | (Dependency c) <- getDepends xprs],
+        [asmStart platform],
+        body,
+        [asmEnd platform],
+        wordDefs,
         map defString (Map.toList strings)
     ]
     where strings = getStrings xprs
           vars = getVars xprs
-          code = [asmStart platform] ++ map (compileExpr strings vars) xprs ++ [asmEnd platform]
           platform = "ti84pcse"
+          initState = FState { strs = strings
+                             , vars = vars
+                             , ifs = []
+                             , ctrlGen = makeLabelGen "CTRL"
+                             , wordLbls = Map.empty }
 
 compileText :: String -> Either String [A.Expr]
 compileText str = do
     xprs <- parseForth str
-    return $ compileExprs xprs
-
-testComp str = putStrLn $ let Right x = parseForth str in A.printTree $ compileExprs x
+    return $ compileProg xprs

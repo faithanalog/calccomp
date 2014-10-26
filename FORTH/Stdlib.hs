@@ -9,7 +9,7 @@ import Asm.QQ
 import qualified Asm.Expr as A
 import qualified Asm.Parser as A
 
-data Dependency = Dependency [A.Expr] deriving (Eq)
+type Dependency = [A.Expr]
 data Rtn = Rtn {code :: [A.Expr], inline :: Bool, depends :: [Dependency]}
 
 -- Routine
@@ -323,6 +323,10 @@ wasm "MAX" = rtn [asm|
     jp (hl)
 |]
 
+-- X Y
+-- HL = Y
+-- DE = X
+-- HL > DE = Y > X
 wasm "<" = withDeps [hlGTDEsigned] $ rtni [asm|
     pop hl
     pop de
@@ -345,8 +349,8 @@ wasm ">=" = withDeps [hlGTEQDEsigned] $ rtni [asm|
 |]
 
 wasm "<=" = withDeps [hlGTEQDEsigned] $ rtni [asm|
-    pop de
     pop hl
+    pop de
     call HL_GTEQ_DE_SIGNED
     push hl
 |]
@@ -485,6 +489,24 @@ wasm "<<" = wasm "LSHIFT"
 wasm ">>" = wasm "RSHIFT"
 wasm ">>>" = wasm "URSHIFT"
 
+wasm "BITROTR" = rtni [asm|
+    pop hl
+    ld a, l
+    rra
+    rr h
+    rr l
+    push hl
+|]
+
+wasm "BITROTL" = rtni [asm|
+    pop hl
+    ld a, l
+    rla
+    rl h
+    rl l
+    push hl
+|]
+
 wasm "@" = rtni [asm|
     pop hl
     ld e,(hl)
@@ -550,7 +572,7 @@ wasm "CELLS" = rtni [asm|
 -- nop
 wasm "CHARS" = rtni []
 
-wasm "." = withDeps [dispHL] $ rtn [asm|
+wasm "PUTNUM" = withDeps [dispHL] $ rtn [asm|
     pop hl
     ex (sp),hl
     bit 7,h
@@ -562,18 +584,21 @@ wasm "." = withDeps [dispHL] $ rtn [asm|
     sbc a,a
     sub h
     ld h,a
-    ld a,Lneg
-DIS_NUM_B0:
+    ld a,$1A ;LNeg
+DISP_NUM_B0:
     b_call(_PutC)
     call DISP_HL
     b_call(_NewLine)
     ret
 |]
 
+wasm "." = wasm "PUTNUM"
+
 wasm _ = Nothing
 
 -- ASM dependencies of FORTH words
-hlGTEQDEsigned = Dependency [asm|
+hlGTDEsigned = [asm|
+HL_GT_DE_SIGNED:
     ld a,e
     sub l
     ld a,d
@@ -586,8 +611,9 @@ hlGTEQDEsigned = Dependency [asm|
     ret
 |]
 
-hlGTDEsigned = Dependency [asm|
-    ;Cheks if HL > DE signed. Returns result in HL. -1 if true, 0 if false
+hlGTEQDEsigned = [asm|
+HL_GTEQ_DE_SIGNED:
+    ;Cheks if HL >= DE signed. Returns result in HL. -1 if true, 0 if false
     xor a
     ld b,h
     sbc hl,de
@@ -602,7 +628,8 @@ hlGTDEsigned = Dependency [asm|
     ret
 |]
 
-dispHL = Dependency [asm|
+dispHL = [asm|
+DISP_HL:
     ;Optimized display of 0
     ld a,h
     or l
@@ -638,7 +665,8 @@ DISP_HL_BR3:
     ret
 |]
 
-mult16 = Dependency [asm|
+mult16 = [asm|
+MULT_16:
     ;16*16 unsigned by z80bits (DE:HL + DE * BC)
     ;Params are passed in, one in hl, the other in bc
     ;This lets us inline popping to hl and pushing result (since that can get optimized)
@@ -664,7 +692,8 @@ mult16 = Dependency [asm|
     ret
 |]
 
-div16 = Dependency [asm|
+div16 = [asm|
+DIV_16:
     ;16/16 signed (modified from unsigned) by z80bits (A:C / DE, quotient = BC, remainder = HL)
     ;Params are passed in as HL and DE (so it does HL / DE)
     ld a,%10000000
