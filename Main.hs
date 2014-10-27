@@ -1,4 +1,3 @@
-{-# LANGUAGE QuasiQuotes #-}
 import qualified C.Parser as C
 import qualified C.Compiler as C
 import qualified Asm.Parser as Asm
@@ -11,7 +10,7 @@ import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
 main = do
-    forthcode <- readFile "test.forth"
+    forthcode <- readFile "SNAKE.forth"
     header <- Asm.parseFile "ti84pcse.inc"
 
     let Right x = FORTH.compileText forthcode
@@ -21,7 +20,8 @@ main = do
         asm <- FORTH.compileText forthcode
         incs <- header
         bytes <- Asm.assemble $ incs ++ asm
-        return $ Asm.makeFile "TESTPRG" Asm.EditLockedProg bytes
+        return bytes
+        {-return $ Asm.makeFile "FSNAKE" Asm.EditLockedProg bytes-}
 
 
 
@@ -40,7 +40,7 @@ main = do
     case file of
         Left err -> putStrLn $ "ERROR || " ++ err
         Right bytes -> do
-            B.writeFile "TESTPRG.8xp" bytes
+            B.writeFile "FSNAKE.8xp" bytes
             putStrLn "Wrote File"
 
     -- asm <- Asm.assembleFile "testthing.z80" "TESTPRG" Asm.EditLockedProg

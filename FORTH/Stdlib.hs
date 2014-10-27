@@ -61,6 +61,7 @@ wasm "TUCK" = rtni [asm|
     push hl
 |]
 
+-- Rotate left
 -- x1 x2 x3 -- x2 x3 x1
 wasm "ROT" = rtni [asm|
     pop de ;n3
@@ -70,7 +71,8 @@ wasm "ROT" = rtni [asm|
     push hl
 |]
 
--- n1 n2 n3 -- n3 n1 n2
+-- Rotate right
+-- x1 x2 x3 -- x3 x1 x2
 wasm "-ROT" = rtni [asm|
     pop hl ;n3
     pop de ;n2
@@ -275,14 +277,14 @@ wasm "ABS" = rtn [asm|
     pop hl
     pop de
     bit 7,d ;Check sign bit
-    jr z,{@}
+    jr z,CTRL_ABS
     xor a
     sub e
     ld e,a
     sbc a,a
     sub d
     ld d,a
-    @:
+    CTRL_ABS:
     push de
     jp (hl)
 |]
