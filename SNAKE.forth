@@ -16,7 +16,6 @@ VAR GROWTH
 VAR BSIZE
 
 ( Initialize variables )
-
 CLEARSCREEN
 5 INITSNAKE
 
@@ -154,8 +153,6 @@ ASMWORD GETCSC {
     ld l,a
     push hl
 }
-
-
 
 ( Generate a random number from 0 - 31 )
 ASMWORD RAND {

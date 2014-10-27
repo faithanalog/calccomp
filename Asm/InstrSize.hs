@@ -27,9 +27,13 @@ instrSize EXX _ = 1
 -- Oh god why
 instrSize LD (l:r:[]) = case l of
     Reg8 A -> case r of
+        Reg8 I -> 2
+        Reg8 R -> 2
         RegIndir _ -> 1
         AddrIndir _ -> 3
         _ -> reg8size
+    Reg8 I -> 2
+    Reg8 R -> 2
     Reg16 HL -> regHL
     Reg16Index _ -> regHL + 1
     Reg16 SP -> case r of
