@@ -1,50 +1,46 @@
 ( VX and VY are velocity )
-( A60B )
 VAR VX
 VAR VY
 
 VAR HEADX
 VAR HEADY
 
-VAR FOODX
-VAR FOODY
-
 VAR HEAD_OFF
 VAR TAIL_OFF
 
-VAR GROWTH
 VAR BSIZE
 
 
 CPU_FAST (15mhz)
-( Initialize variables )
-
-4 HEADX !
-0 HEADY !
-
-1 VX !
-0 VY !
-
-4 HEAD_OFF !
-0 TAIL_OFF !
-
-0 GROWTH !
-5 BSIZE !
-
-0x0000 320 0 240 0 FILLRECT
-5 INITSNAKE
-GENFOOD
-
-GAMELOOP
-
+0 0 0x0000 320 240 FILLRECT
+0 0 0xFFFF 228 228 FILLRECT
+RUNGAME
 CPU_NORM (6mhz)
 
+( Runs the game loop multiple times, return val determines if it runs again )
+WORD RUNGAME {
+    ( Initialize variables )
+    4 HEADX !    0 HEADY !
+    1 VX !       0 VY !
+    4 HEAD_OFF ! 0 TAIL_OFF !
+    5 BSIZE !
+    2 2 0x0000 224 224 FILLRECT
+    CLEARBOARD
+    5 INITSNAKE
+    GENFOOD
+    GAMELOOP IF
+        RECURSE
+    THEN
+}
+
+( Actual loop for in the game )
+( Return TRUE if game should restart, FALSE if it should exit )
 WORD GAMELOOP {
     (Remember, TRUE = -1, FALSE = 0)
     GETCSC
     DUP 15 = IF
         DROP
-        RETURN
+        FALSE RETURN
     THEN
     DUP 1- 4 U< IF  (If key code is from 1-4...)
         DUP DUP DUP (STACK: KEY KEY KEY KEY)
@@ -74,16 +70,15 @@ WORD GAMELOOP {
     DUP HEADY !
     HEAD_OFF @ BODY_Y + c!
 
-    (Draw head)
-    HEADX @ HEADY @
-    2DUP 1 SETCELL
-    0x07E0 FILLCELL
 
-    (Food gen)
-    HEADX @ FOODX @ =
-    HEADY @ FOODY @ =
-    AND
-    IF
+    (Food/collision test)
+    HEADX @ HEADY @
+    CELLADDR c@ (Tile at new head loc)
+    DUP 1 = IF
+        DROP
+        TRUE RETURN (Restart game)
+    THEN
+    2 = IF
         GENFOOD
     ELSE
         (Erase/move tail)
@@ -95,6 +90,11 @@ WORD GAMELOOP {
         1+ 1023 AND
         TAIL_OFF !
     THEN
+
+    (Draw head)
+    HEADX @ HEADY @
+    2DUP 1 SETCELL
+    0x07E0 FILLCELL
 
     245 SLEEP
     RECURSE
@@ -119,18 +119,13 @@ WORD INITSNAKE {
 (Generates a new food tile)
 WORD GENFOOD {
     RAND RAND (X and Y)
-    2DUP TESTCELL IF
+    2DUP CELLADDR c@ IF
         2DROP
         RECURSE          (Jump back to start until we find a blank tile)
     THEN
-    2DUP FOODY ! FOODX ! (Save food position)
+    (2DUP FOODY ! FOODX ! (Save food position))
     2DUP 2 SETCELL       (Set food position on board)
     0xF800 FILLCELL      (Draw food)
-}
-
-( Tests to see if a cell at X Y has a snake body )
-WORD TESTCELL {
-    CELLADDR c@ 0!=
 }
 
 ( Input: X Y TYPE )
@@ -138,36 +133,53 @@ WORD SETCELL {
     -ROT CELLADDR c!
 }
 
-
-
 ( Gets cell addr for cell X Y )
 WORD CELLADDR {
     32 * +      ( Y * 32 + x)
     BOARD +     ( Add board address )
 }
 
+( Fills board with zeroes )
+( Input: Addr Val Amount )
+WORD CLEARBOARD {
+    BOARD >R (addr on R stack)
+    1024     (Amount of bytes to fill)
+    RECURSEPOINT
+    2-       (We fill 2 at a time)
+    DUP R@ + 0 SWAP !
+    ?DUP IF  (If offset > 0, recurse)
+        RECURSE
+    THEN
+    R> DROP (Drop BOARD)
+}
+
 ( Fills a board cell )
 ( Input: X Y COLOR )
 WORD FILLCELL {
-    -ROT   (COLOR X Y)
-    7 * 2+ (Y = Y * 7 + 2)
-    SWAP   (COLOR Y X)
-    7 * 2+ (X = X * 7 + 2)
-    7 SWAP (COLOR Y 7 X)
-    ROT    (COLOR 7 X Y)
-    7 SWAP (COLOR 7 X 7 Y)
+    ROT
+    7 * 2+  (X = X * 7 + 2)
+    ROT
+    7 * 2+  (Y = Y * 7 + 2)
+    ROT 7 7 (Stack: X Y COLOR 7 7)
     FILLRECT
 }
 
-( INPUT: COLOR WIDTH X HEIGHT Y )
+( INPUT: X Y COLOR WIDTH HEIGHT )
 WORD FILLRECT {
-    DUP 0x50 SETLCD (Win top)
-    DUP 0x20 SETLCD (Cursor y)
-    OVER + 1- 0x51 SETLCD (Win bottom)
-    -ROT
-    DUP 0x52 SETLCD (Win left)
-    DUP 0x21 SETLCD (Cursor x)
-    OVER + 1- 0x53 SETLCD (Win right)
+    ROT >R                (Color on R stack)
+    2SWAP                 (STACK: WIDTH HEIGHT X Y)
+
+    DUP DUP               (W H X Y Y Y)
+    0x50 SETLCD           (Win top)
+    0x20 SETLCD           (Cursor y)
+    2 PICK + 1- 0x51 SETLCD  (Win bottom, STACK: WIDTH HEIGHT X)
+
+    DUP DUP               (W H X X X)
+    0x52 SETLCD           (Win left)
+    0x21 SETLCD           (Cursor x)
+    2 PICK + 1- 0x53 SETLCD  (Win right,  STACK: WIDTH HEIGHT)
+
+    R>                    (Color off R stack)
     PIXELFILL
 }
 
@@ -249,11 +261,11 @@ ASMWORD SETLCD {
 }
 
 ( Fills WIDTH * HEIGHT pixels with COLOR )
-( INPUT: COLOR HEIGHT WIDTH )
+( INPUT: WIDTH HEIGHT COLOR )
 ASMWORD PIXELFILL {
-    pop hl ;HL = width
-    pop bc ;C = height
     pop de ;Color
+    pop bc ;C = height
+    pop hl ;HL = width
 
     ld a,22h
     out (10h),a

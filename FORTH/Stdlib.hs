@@ -24,6 +24,10 @@ stdlibAsm = wasm
 
 -- Standard FORTH words
 wasm :: String -> Maybe Rtn
+
+wasm "TRUE" = rtni [asm|ld hl, -1 \ push hl|]
+wasm "FALSE" = rtni [asm|ld hl, 0 \ push hl|]
+
 wasm "DUP" = rtni [asm|pop hl \ push hl \ push hl|]
 
 -- DUP if top != 0, else leave it alone
@@ -470,8 +474,7 @@ wasm "INVERT" = rtni [asm|
 
 wasm "LSHIFT" = rtni [asm|
     pop hl
-    sla l
-    rl h
+    add hl,hl
     push hl
 |]
 

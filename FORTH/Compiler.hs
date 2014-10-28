@@ -81,7 +81,6 @@ wordPrologue nm = [asm|
     ld (ix),h
     dec ix
     ld (ix),l
-    @{"RWDEF_" ++ nm ++ ":"} ;For recursing
 |]
 
 wordEpilogue = [asm|
@@ -101,11 +100,16 @@ defWord :: Expr -> State FState [A.Expr]
 defWord (WordDef nm body) = do
     lbl <- wordLabel nm
     code <- concat <$> mapM (compileBody lbl) body
-    defWordFull nm code
+    let allCode = if rwDef lbl `notElem` code
+                      then rwDef lbl:code
+                      else code
+    defWordFull nm allCode
     where compileBody lbl x = case x of
               Tok "RECURSE" -> return [asm|jp @{"RWDEF_" ++ lbl}|]
               Tok "RETURN" -> let Just rtn = stdlibAsm "RETURN" in return $ code rtn
+              Tok "RECURSEPOINT" -> return [rwDef lbl]
               _ -> compileExpr x
+          rwDef lbl = A.LabelDef ("RWDEF_" ++ lbl)
 
 defWordAsm :: Expr -> State FState [A.Expr]
 defWordAsm (WordDefAsm nm body) = defWordFull nm code
@@ -255,24 +259,22 @@ compileProg xprs =
             normWords = [w | w@(WordDef nm _)    <- xprs]
 
         -- Compile all expressions, generating word labels in the process
-        asmDefs  <- zip asmWords <$> mapM defWordAsm asmWords
-        normDefs <- zip normWords <$> mapM defWord normWords
+        asmDefs  <- mapM defWordAsm asmWords
+        normDefs <- mapM defWord normWords
         body <- mapM compileExpr xprs
 
-        -- Get the word definitions actually called in the program, omit Asm for everything else
+        -- Get the STDLIB word definitions actually called in the program
         usedWords <- wordLbls <$> get
-        let usedAsmDefs  = [b | (WordDefAsm nm _, b) <- asmDefs, Map.member nm usedWords]
-            usedNormDefs = [b | (WordDef nm _, b) <- normDefs, Map.member nm usedWords]
-            usedRtns = [(t,rtn) | t <- Map.keys usedWords,
+        let usedRtns = [(t,rtn) | t <- Map.keys usedWords,
                            let rtn' = stdlibAsm t,
                            isJust rtn',
                            let Just rtn = rtn']
             rtnWords = [RtnWord t (code rtn) | (t,rtn) <- usedRtns, not (inline rtn)]
             rtnDeps  = concatMap (depends . snd) usedRtns
-        usedRtnDefs <- mapM defRtnWord rtnWords
+        rtnDefs <- mapM defRtnWord rtnWords
 
         -- Return the body of the code, and all the word definitions
-        return (body, usedNormDefs ++ usedRtnDefs ++ usedAsmDefs ++ rtnDeps)
+        return (body, normDefs ++ rtnDefs ++ asmDefs ++ rtnDeps)
     in optimizeAsm $ concatMap concat [
         map defVar vars,
         [asmStart platform],
