@@ -31,7 +31,7 @@ CPU_FAST (15mhz)
 0 GROWTH !
 5 BSIZE !
 
-CLEARSCREEN
+0x0000 320 0 240 0 FILLRECT
 5 INITSNAKE
 GENFOOD
 
@@ -74,21 +74,29 @@ WORD GAMELOOP {
     DUP HEADY !
     HEAD_OFF @ BODY_Y + c!
 
-    (Erase/move tail)
-    TAIL_OFF @ DUP DUP
-    BODY_X + c@ SWAP
-    BODY_Y + c@
-    2DUP 0 SETCELL
-    0x0000 FILLCELL
-    1+ 1023 AND
-    TAIL_OFF !
-
     (Draw head)
     HEADX @ HEADY @
     2DUP 1 SETCELL
     0x07E0 FILLCELL
 
-    225 SLEEP
+    (Food gen)
+    HEADX @ FOODX @ =
+    HEADY @ FOODY @ =
+    AND
+    IF
+        GENFOOD
+    ELSE
+        (Erase/move tail)
+        TAIL_OFF @ DUP DUP
+        BODY_X + c@ SWAP
+        BODY_Y + c@
+        2DUP 0 SETCELL
+        0x0000 FILLCELL
+        1+ 1023 AND
+        TAIL_OFF !
+    THEN
+
+    245 SLEEP
     RECURSE
 }
 
@@ -138,6 +146,31 @@ WORD CELLADDR {
     BOARD +     ( Add board address )
 }
 
+( Fills a board cell )
+( Input: X Y COLOR )
+WORD FILLCELL {
+    -ROT   (COLOR X Y)
+    7 * 2+ (Y = Y * 7 + 2)
+    SWAP   (COLOR Y X)
+    7 * 2+ (X = X * 7 + 2)
+    7 SWAP (COLOR Y 7 X)
+    ROT    (COLOR 7 X Y)
+    7 SWAP (COLOR 7 X 7 Y)
+    FILLRECT
+}
+
+( INPUT: COLOR WIDTH X HEIGHT Y )
+WORD FILLRECT {
+    DUP 0x50 SETLCD (Win top)
+    DUP 0x20 SETLCD (Cursor y)
+    OVER + 1- 0x51 SETLCD (Win bottom)
+    -ROT
+    DUP 0x52 SETLCD (Win left)
+    DUP 0x21 SETLCD (Cursor x)
+    OVER + 1- 0x53 SETLCD (Win right)
+    PIXELFILL
+}
+
 ASMWORD BODY_X {
     .var 1024, snakeBodyX
     ld hl,snakeBodyX
@@ -176,10 +209,6 @@ WasteTime:
     jr nz,WasteTime
 }
 
-ASMWORD GETKEY {
-    b_call(_GetKey)
-}
-
 ASMWORD GETCSC {
     b_call(_GetCSC)
     ld h,0
@@ -204,158 +233,45 @@ ASMWORD RAND {
     push hl
 }
 
-( Below here is scary LCD code )
 
-( Fills the screen with black )
-ASMWORD CLEARSCREEN {
-    ld b,0
-    ld c,11h
-
-    ;Win left
-    ld a,52h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    out (c),b
-
-    ;Win right
-    ld a,53h
-    out (10h),a
-    out (10h),a
-    ld a, 319 >> 8
-    out (11h),a
-    ld a, 319
-    out (11h),a
-
-    ;Win top
-    ld a,50h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    out (c),b
-
-    ;Win bot
-    ld a,51h
-    out (10h),a
-    out (10h),a
-    xor a
-    out (11h),a
-    ld a, 239
-    out (11h),a
-
-    ;Win cursor x
-    ld a,21h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    out (c),b
-
-    ;Win cursor y
-    ld a,20h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    out (c),b
-
-    ld a,22h
-    out (10h),a
-    out (10h),a
-
-
-    ld b,0
-    ld hl,300
-    _clearScreenOuterLoop:
-        xor a
-        _clearScreenLoop:
-            out (11h),a
-            out (11h),a
-            djnz _clearScreenLoop
-        dec hl
-        ld a,h
-        or l
-        jr nz,_clearScreenOuterLoop
-}
-
-( INPUT: X Y COLOR )
-ASMWORD FILLCELL {
-    pop de ;Color
-    pop hl ;Y
-    pop bc ;X
-    ld h,c ;H = X, L = Y
-
-    ld a,h
-    add a,a
-    add a,a
-    add a,a
-    sub h
-    ; add a,2 + 14 ;Offset right by 16
-    ld h,a
-
+( Sets an LCD register )
+( INPUT: VAL REG )
+ASMWORD SETLCD {
+    pop hl
     ld a,l
-    add a,a
-    add a,a
-    add a,a
-    sub l
-    ; add a,2 ;Offset by 8 down
-    ld l,a
-
-    ld b,0
-    ld c,11h
-
-    ;Win left
-    ld a,52h
     out (10h),a
     out (10h),a
-    out (c),b
-    out (c),h
-
-    ;Win cursor x
-    ld a,21h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    out (c),h
-
-    ;Win right
-    ld a,53h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    ld a,6
-    add a,h
+    pop hl
+    ld a,h
     out (11h),a
-
-    ;Win top
-    ld a,50h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    out (c),l
-
-    ;Win cursor y
-    ld a,20h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    out (c),l
-
-    ;Win bot
-    ld a,51h
-    out (10h),a
-    out (10h),a
-    out (c),b
-    ld a,6
-    add a,l
+    ld a,l
     out (11h),a
+}
+
+( Fills WIDTH * HEIGHT pixels with COLOR )
+( INPUT: COLOR HEIGHT WIDTH )
+ASMWORD PIXELFILL {
+    pop hl ;HL = width
+    pop bc ;C = height
+    pop de ;Color
 
     ld a,22h
     out (10h),a
     out (10h),a
 
-    ld a,d ;out with a is faster marginally, use it for the msb of the color
-    ld b,49
-    _fillSnakePart:
-        out (11h),a
+    ld b,c ;height
+    ld c,11h ;Output reg
+
+_pixelFillLpX:
+    push bc ;Save height
+    _pixelFillLpY:
+        out (c),d
         out (c),e
-        djnz _fillSnakePart
+        djnz _pixelFillLpY
+    pop bc
+    dec hl
+    ld a,h
+    or l
+    jr nz, _pixelFillLpX
 }
+
