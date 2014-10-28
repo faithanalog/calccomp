@@ -15,9 +15,9 @@ VAR TAIL_OFF
 VAR GROWTH
 VAR BSIZE
 
+
+CPU_FAST (15mhz)
 ( Initialize variables )
-CLEARSCREEN
-5 INITSNAKE
 
 4 HEADX !
 0 HEADY !
@@ -31,13 +31,38 @@ CLEARSCREEN
 0 GROWTH !
 5 BSIZE !
 
-
+CLEARSCREEN
+5 INITSNAKE
+GENFOOD
 
 GAMELOOP
 
+CPU_NORM (6mhz)
+
 WORD GAMELOOP {
+    (Remember, TRUE = -1, FALSE = 0)
+    GETCSC
+    DUP 15 = IF
+        DROP
+        RETURN
+    THEN
+    DUP 1- 4 U< IF  (If key code is from 1-4...)
+        DUP DUP DUP (STACK: KEY KEY KEY KEY)
+        (Y axis)
+        4 = SWAP 1 = -      (-1 if key up, 1 if key down, 0 if both)    (STACK: KEY KEY VELY)
+        DUP VY @ AND 0= IF (Same as VX for VY)
+            VY !
+        ELSE DROP THEN
+
+        (X Axis)
+        2 = SWAP 3 = -      (-1 if key left, 1 if key right, 0 if both) (STACK: VELX)
+        DUP VX @ AND 0= IF  (If VX & NEWVX == 0, set VX to NEWVX, else DROP it)
+            VX !
+        ELSE DROP THEN
+    ELSE DROP THEN
+
     (Increment head offset)
-    HEAD_OFF @ 1 + 1023 AND
+    HEAD_OFF @ 1+ 1023 AND
     HEAD_OFF !
 
     (Move head)
@@ -55,7 +80,7 @@ WORD GAMELOOP {
     BODY_Y + c@
     2DUP 0 SETCELL
     0x0000 FILLCELL
-    1 + 1023 AND
+    1+ 1023 AND
     TAIL_OFF !
 
     (Draw head)
@@ -64,10 +89,7 @@ WORD GAMELOOP {
     0x07E0 FILLCELL
 
     225 SLEEP
-    GETCSC
-    0= IF
-        RECURSE
-    THEN
+    RECURSE
 }
 
 (
@@ -75,14 +97,15 @@ Initializes the snake on LCD/board
 Input: Length
 )
 WORD INITSNAKE {
-    1 -
-    DUP DUP BODY_X + !        (Set X position in body data)
-        DUP BODY_Y + 0 SWAP ! (Set Y position in body data)
+    1-
+    DUP DUP BODY_X + c!        (Set X position in body data)
+        DUP BODY_Y + 0 SWAP c! (Set Y position in body data)
     DUP 0 0x07E0 FILLCELL
     DUP 0 1 SETCELL
-    0!= IF
+    DUP 0!= IF
         RECURSE
     THEN
+    DROP
 }
 
 (Generates a new food tile)
@@ -131,6 +154,16 @@ ASMWORD BOARD {
     .var 1024, board
     ld hl, board
     push hl
+}
+
+ASMWORD CPU_FAST {
+    ld a,01h
+    out (20h),a
+}
+
+ASMWORD CPU_NORM {
+    ld a,00h
+    out (20h),a
 }
 
 ASMWORD SLEEP {

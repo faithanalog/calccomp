@@ -104,6 +104,7 @@ defWord (WordDef nm body) = do
     defWordFull nm code
     where compileBody lbl x = case x of
               Tok "RECURSE" -> return [asm|jp @{"RWDEF_" ++ lbl}|]
+              Tok "RETURN" -> let Just rtn = stdlibAsm "RETURN" in return $ code rtn
               _ -> compileExpr x
 
 defWordAsm :: Expr -> State FState [A.Expr]
@@ -159,6 +160,8 @@ compileExpr (Tok "THEN") = do
         Just x   -> return [asm|@{x ++ ":"}|]
 
 compileExpr (Tok "RECURSE") = error "Can not use 'RECURSE' outside of word def"
+
+compileExpr (Tok "RETURN") = error "Can not use 'RETURN' outside of word def"
 
 compileExpr (Tok t)
     | isNothing rtn = do

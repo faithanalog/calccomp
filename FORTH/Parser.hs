@@ -33,7 +33,7 @@ lexeme        = Token.lexeme lexer
 hexadecimal   = char '0' >> Token.hexadecimal lexer
 whiteSpace    = Token.whiteSpace lexer
 
-identChar = letter <|> oneOf "_+-*/=<>@!."
+identChar = letter <|> oneOf "_+-*/=<>@!?."
 identifier = many1 (digit <|> identChar)
 
 integer = do

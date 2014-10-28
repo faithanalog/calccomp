@@ -26,13 +26,14 @@ stdlibAsm = wasm
 wasm :: String -> Maybe Rtn
 wasm "DUP" = rtni [asm|pop hl \ push hl \ push hl|]
 
--- DUP if top != 0
+-- DUP if top != 0, else leave it alone
 wasm "?DUP" = rtni [asm|
     pop hl
+    push hl
     ld a,h
     or l
-    push hl
-    jr z,$+3
+    jr nz,$+3
+    pop hl
     push hl
 |]
 
@@ -404,7 +405,8 @@ wasm "0=" = rtni [asm|
     ld a,l
     or h
     jr z,$+5
-    ld hl,-1
+    ld hl,1
+    dec hl
     push hl
 |]
 
@@ -573,6 +575,15 @@ wasm "CELLS" = rtni [asm|
 
 -- nop
 wasm "CHARS" = rtni []
+
+-- Return from the current word
+wasm "RETURN" = rtni [asm|
+    ld l,(ix)
+    inc ix
+    ld h,(ix)
+    inc ix
+    jp (hl)
+|]
 
 wasm "PUTNUM" = withDeps [dispHL] $ rtn [asm|
     pop hl
