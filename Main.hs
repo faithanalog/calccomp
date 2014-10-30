@@ -10,7 +10,7 @@ import qualified Data.ByteString.Lazy as B
 import Control.Monad
 
 main = do
-    forthcode <- readFile "SNAKE.forth"
+    forthcode <- readFile "GAME.forth"
     header <- Asm.parseFile "ti84pcse.inc"
 
     let Right x = FORTH.compileText forthcode
@@ -20,7 +20,8 @@ main = do
         asm <- FORTH.compileText forthcode
         incs <- header
         bytes <- Asm.assemble $ incs ++ asm
-        return $ Asm.makeFile "FSNAKE" Asm.EditLockedProg bytes
+        {-return bytes-}
+        return $ Asm.makeFile "FTEST" Asm.EditLockedProg bytes
 
 
 
@@ -39,7 +40,7 @@ main = do
     case file of
         Left err -> putStrLn $ "ERROR || " ++ err
         Right bytes -> do
-            B.writeFile "FSNAKE.8xp" bytes
+            B.writeFile "FTEST.8xp" bytes
             putStrLn "Wrote File"
 
     -- asm <- Asm.assembleFile "testthing.z80" "TESTPRG" Asm.EditLockedProg
