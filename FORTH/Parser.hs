@@ -16,6 +16,8 @@ data Expr = Num Int
           | VarDef String
           | WordDef String [Expr]
           | WordDefAsm String String
+          | VarLoad String Int
+          | VarStore String Int
           deriving (Show,Eq)
 
 lexer :: Token.TokenParser ()

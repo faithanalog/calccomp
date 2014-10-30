@@ -11,11 +11,11 @@ VAR TAIL_OFF
 VAR BSIZE
 
 
-CPU_FAST (15mhz)
+1 CPU_SPEED (15mhz)
 0 0 0x0000 320 240 FILLRECT
 0 0 0xFFFF 228 228 FILLRECT
 RUNGAME
-CPU_NORM (6mhz)
+0 CPU_SPEED (6mhz)
 
 ( Runs the game loop multiple times, return val determines if it runs again )
 WORD RUNGAME {
@@ -201,13 +201,9 @@ ASMWORD BOARD {
     push hl
 }
 
-ASMWORD CPU_FAST {
-    ld a,01h
-    out (20h),a
-}
-
-ASMWORD CPU_NORM {
-    ld a,00h
+ASMWORD CPU_SPEED {
+    pop hl
+    ld a,l
     out (20h),a
 }
 

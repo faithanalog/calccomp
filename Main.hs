@@ -20,7 +20,6 @@ main = do
         asm <- FORTH.compileText forthcode
         incs <- header
         bytes <- Asm.assemble $ incs ++ asm
-        {-return bytes-}
         return $ Asm.makeFile "FSNAKE" Asm.EditLockedProg bytes
 
 

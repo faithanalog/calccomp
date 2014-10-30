@@ -97,6 +97,10 @@ wasm "PICK" = rtni [asm|
     push de
 |]
 
+-- xu .. x0 u -- .. x0 xu
+-- In english, moves the Nth element on the stack to the front
+wasm "ROLL" = error "'ROLL' is not implemented"
+
 wasm "2DUP" = rtni [asm|
     pop hl
     pop de
@@ -124,17 +128,64 @@ wasm "2OVER" = rtn [asm|
     pop de ;Save return address
     ld hl,7 ;Position on MSB of x1
     add hl,sp
-    ld b,(hl)
-    dec hl
-    ld c,(hl)
-    dec hl
+    ld b,(hl) \ dec hl
+    ld c,(hl) \ dec hl
     push bc
-    ld b,(hl)
-    dec hl
+    ld b,(hl) \ dec hl
     ld c,(hl)
     push bc
     ex de,hl
     jp (hl)
+|]
+
+-- x1 x2 x3 x4 -- x3 x4
+wasm "2NIP" = rtni [asm|
+    pop hl
+    pop de
+    pop bc \ pop bc ;Remove x1 and x2
+    push de
+    push hl
+|]
+
+-- x1 x2 x3 x4 -- x3 x4 x1 x2 x3 x4
+-- This is some tricky code
+wasm "2TUCK" = rtn [asm|
+    pop de  ;Grab ret addr
+    push de ;Allocate 2 words for result, put ret addr back on top
+    push de
+    push de
+
+    ;On stack: x1 x2 x3 x4 _ _ RETURN_ADDR
+
+    ;Move stack pointer to x4
+    ld hl,6
+    add hl,sp
+    ld sp,hl
+
+    ;2SWAP, result is x3 x4 x1 x2 on stack
+    pop bc ;x4
+    pop hl ;x3
+    pop de ;x2
+    ex (sp),hl ;hl = x1
+    push bc
+    push hl
+    push de
+
+    ;2OVER, result is x3 x4 x1 x2 x3 x4 on stack
+    ld hl,7
+    add hl,sp ;HL = MSB of x3
+
+    ld b,(hl) \ dec hl
+    ld c,(hl) \ dec hl
+    push bc
+    ld b,(hl) \ dec hl
+    ld c,(hl)
+    push bc
+
+    ;Position stack on RETURN_ADDR and ret
+    dec sp
+    dec sp
+    ret
 |]
 
 wasm ">R" = rtni [asm|
