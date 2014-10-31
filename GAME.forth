@@ -64,10 +64,9 @@ WORD FLIP_BUFFER {
     DISP_BUFFER
 }
 
-( INPUT: X Y COLOR WIDTH HEIGHT )
-( Configured for half-res mode )
-WORD FILLRECT {
-    ROT >R                (Color on R stack)
+( INPUT: X Y WIDTH HEIGHT )
+( RETURN: WIDTH HEIGHT )
+WORD SET_LCD_WIN {
     << (Height *= 2)
     2SWAP                 (STACK: WIDTH HEIGHT X Y)
     << (Y *= 2)
@@ -84,8 +83,36 @@ WORD FILLRECT {
     0x52 SETLCD           (Win left)
     0x21 SETLCD           (Cursor x)
     2 PICK + 1- 0x53 SETLCD  (Win right,  STACK: WIDTH HEIGHT)
-    >> (Height /= 2, PIXELFILL also is configured for half-res mode. This lets us do half as many DJNZs)
+    >> (Height /= 2)
+}
 
+( Input: X Y POINTER )
+WORD DISP_SPRT {
+    DUP DUP >R (Store ptr on stack)
+            @  (WIDTH)
+    SWAP 2+ @  (HEIGHT)
+    SET_LCD_WIN
+    2DROP      (Dont need width/height anymore)
+    R>
+    DISP_SPRT_FILL
+}
+
+( Input: X Y POINTER )
+WORD DISP_SPRT_XLIB {
+    DUP DUP >R (Store ptr on stack)
+            @  (WIDTH)
+    SWAP 2+ @  (HEIGHT)
+    SET_LCD_WIN
+    2DROP      (Dont need width/height anymore)
+    R>
+    DISP_SPRT_XLIB_FILL
+}
+
+( INPUT: X Y COLOR WIDTH HEIGHT )
+( Configured for half-res mode )
+WORD FILLRECT {
+    ROT >R                (Color on R stack)
+    SET_LCD_WIN
     R>                    (Color off R stack)
     PIXELFILL
 }
@@ -171,5 +198,59 @@ _pixelFillLpX:
     dec hl
     ld a,h
     or l
-    jr nz, _pixelFillLpX
+    jp nz, _pixelFillLpX
+}
+
+(INPUT: Pointer)
+(Display sprite with xLIBC palette, adjusted for half-res)
+ASMWORD DISP_SPRT_XLIB_FILL {
+    ld a,22h    ;Switch to GRAM
+    out (10h),a
+    out (10h),a
+
+    pop hl      ;Data pointer
+    ;Size in bytes
+    ld b,(hl) \ inc hl ;LSB
+    ld d,(hl) \ inc hl ;MSB
+
+    ld a,b
+    or a
+    jr z,$+3
+    inc d       ;If B is non 0, we need an extra iteration of the inner loop
+
+_dispxlibLp:
+    _dispxlibLpInner:
+        ld a,(hl) \ inc hl
+        out (11h),a
+        out (11h),a
+        out (11h),a
+        out (11h),a
+        djnz _dispxlibLpInner
+    dec d
+    jp nz,_dispxlibLp
+}
+
+(INPUT: Pointer)
+(Not adjusted for half-res)
+ASMWORD DISP_SPRT_FILL {
+    ld c,11h    ;Out port
+    ld a,22h    ;Switch to GRAM
+    out (10h),a
+    out (10h),a
+
+    pop hl      ;Data pointer
+    ;Size in bytes
+    ld b,(hl) \ inc hl ;LSB
+    ld d,(hl) \ inc hl ;MSB
+
+    ;If B != 0, we need an extra iteration
+    ld a,b
+    or a
+    jr z,$+3
+    inc d
+
+_dispSprtLp:
+    otir
+    dec d
+    jp nz,_dispSprtLp
 }

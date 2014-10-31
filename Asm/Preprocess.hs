@@ -4,6 +4,8 @@ import Control.Monad
 import Data.List (isPrefixOf, intercalate)
 import Data.List.Utils (replace, split)
 import Data.Char (toUpper)
+import qualified Data.ByteString.Lazy as B
+import Data.Word
 
 import Text.Parsec hiding (space, spaces, Line)
 import Text.Parsec.Expr
@@ -38,6 +40,9 @@ symbol = lexeme $ do
     t <- many1 alphaNum
     return (h:t)
 
+commaSep :: Parser a -> Parser [a]
+commaSep p = lexeme $ p `sepBy` (lexeme $ char ',')
+
 directive :: Parser Directive
 directive = do
     char '#' <|> char '.'
@@ -66,14 +71,26 @@ directives :: String -> String -> [Directive]
 directives text dir = [d | Dir d <- matches]
     where matches = filter (isDirective dir) . map parseLine . lines $ text
 
+binaryInc :: String -> IO String
+binaryInc str = do
+    contents <- B.readFile str
+    let bytes = B.unpack contents
+    return $ ".db " ++ intercalate "," (map show bytes)
+
 readWithIncludes :: FilePath -> IO String
 readWithIncludes file = do
     text <- readFile file
-    let incs = directives text "include"
-    files <- forM incs $ \(Directive _ (f:_)) ->
-        let fname = if head f == '"' then init . tail $ f else f in
-            if file == fname then return "" else readWithIncludes fname
-    return $ unlines (files ++ [text])
+    unlines `fmap` mapM procLine (lines text)
+    where fname f = if head f == '"' then init . tail $ f else f
+          procLine l = do
+              let line = parseLine l
+              case line of
+                  Line ln -> return $ ln
+                  Dir (Directive "include" (f:_)) ->
+                      if file == (fname f) then return "" --No recursive includes
+                      else readWithIncludes (fname f)
+                  Dir (Directive "incbin" (f:_)) -> binaryInc (fname f)
+                  Dir d -> return $ show d
 
 processDefines :: String -> String
 processDefines text = unlines $ transform [] (map parseLine $ lines text)
