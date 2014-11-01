@@ -110,10 +110,9 @@ WORD INITSNAKE {
         DUP BODY_Y + 0 SWAP c! (Set Y position in body data)
     DUP 0 0x07E0 FILLCELL
     DUP 0 1 SETCELL
-    DUP 0!= IF
-        RECURSE
-    THEN
-    DROP
+
+    DUP IFRECURSE (If size != 0, recurse)
+    DROP          (Drop size)
 }
 
 (Generates a new food tile)

@@ -4,30 +4,66 @@ VAR Y
 0 X !
 0 Y !
 
+DI
+1 CPU_SPEED
 HALF_RES
-0 0 0x0000 320 120 FILLRECT
-GAMELOOP
+CLEARSCREEN
+GAMELOOP_
 FULL_RES
+0 CPU_SPEED
+EI
 
 WORD GAMELOOP {
     GETCSC
-    DUP 15 = IF
-        DROP
+    15 = IF
         RETURN
     THEN
 
-    X @ Y @ (Old X/Y)   (KEY X Y)
-    ROT (X Y KEY)
-    DUP DUP DUP (KEY, KEY, KEY, KEY)
+    X @ Y @ (Old X/Y)
 
-    2 = SWAP 3 = - << << X +! (X += (isRight - isLeft) * 4)
-    4 = SWAP 1 = - << << Y +! (Y += (isDown - isUp) * 4)
+    Y @ 4 +
+    DUP 104 > IF
+        DROP 0
+    THEN
+    DUP Y !
+    X @ SWAP (Stack: OldX, OldY, X, Y)
+    0xF800 16 16 FILLRECT
+    FLIP_BUFFER
+
+    (Stack: OldX, OldY)
+    0x0000 16 16 FILLRECT
+
+    150 SLEEP
+    RECURSE
+}
+
+WORD GAMELOOP_ {
+    GETCSC
+    15 = IF
+        RETURN
+    THEN
+
+    X @ Y @ (Old X/Y)
+
+    GETARROWS
+    -ROT (STACK: DOWN UP LEFT RIGHT)
+         - << << X +! (X += (isRight - isLeft) * 4)
+    SWAP - << << Y +! (Y += (isDown - isUp) * 4)
+
+
     X @ Y @ 0xFE00 16 16 FILLRECT
 
     FLIP_BUFFER (Disp new square)
 
     0x0000 16 16 FILLRECT (Erase old square)
     RECURSE
+}
+
+WORD CLEARSCREEN {
+    CURBUFF @   (Save offset)
+    0 CURBUFF ! (No offset to screen-clear)
+    0 0 0x0000 320 120 FILLRECT
+    CURBUFF !   (Restore offset)
 }
 
 WORD HALF_RES {
@@ -134,10 +170,31 @@ WasteTime:
 }
 
 ASMWORD GETCSC {
+    b_call(_kbdScan)
     b_call(_GetCSC)
     ld h,0
     ld l,a
     push hl
+}
+
+( Returns: DOWN LEFT RIGHT UP )
+ASMWORD GETARROWS {
+    ld a,FFh
+    out (01h),a
+    ld a,FEh ;Arrow group
+    out (01h),a
+	or a
+	push af
+	sbc hl,hl
+	pop af
+	in a,(01h)
+	ld b,4
+_arrowLp:
+    rla
+    ld hl,0
+    sbc hl,hl
+    push hl
+    djnz _arrowLp
 }
 
 ( Generate a random number from 0 - 31 )

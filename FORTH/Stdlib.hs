@@ -661,6 +661,9 @@ DISP_NUM_B0:
 
 wasm "." = wasm "PUTNUM"
 
+wasm "DI" = rtni [asm|di|]
+wasm "EI" = rtni [asm|ei|]
+
 wasm _ = Nothing
 
 -- ASM dependencies of FORTH words

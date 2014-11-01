@@ -106,6 +106,12 @@ defWord (WordDef nm body) = do
     defWordFull nm allCode
     where compileBody lbl x = case x of
               Tok "RECURSE" -> return [asm|jp @{"RWDEF_" ++ lbl}|]
+              Tok "IFRECURSE" -> return [asm|
+                      pop hl
+                      ld a,h
+                      or l
+                      jp nz,@{"RWDEF_" ++ lbl}
+                  |]
               Tok "RETURN" -> let Just rtn = stdlibAsm "RETURN" in return $ code rtn
               Tok "RECURSEPOINT" -> return [rwDef lbl]
               _ -> compileExpr x
