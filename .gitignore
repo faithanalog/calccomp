@@ -4,3 +4,4 @@ dist/
 texted.z80
 out/
 calccomp
+*.8xp
