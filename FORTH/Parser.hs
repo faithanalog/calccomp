@@ -18,6 +18,7 @@ data Expr = Num Int
           | WordDefAsm String String
           | VarLoad String Int
           | VarStore String Int
+          | BinaryInc String String
           deriving (Show,Eq)
 
 lexer :: Token.TokenParser ()
@@ -84,6 +85,13 @@ varDef = do
     whiteSpace
     VarDef <$> identifier
 
+binInc :: Parser Expr
+binInc = do
+    stringNoCase "incbin"
+    nm <- whiteSpace >> identifier
+    fname <- whiteSpace >> stringLiteral
+    return $ BinaryInc nm fname
+
 baseWordDef :: String -> Parser a -> Parser (String, a)
 baseWordDef symbol bodyParser = do
     stringNoCase symbol
@@ -108,7 +116,7 @@ forthExpr :: Parser Expr
 forthExpr = try num <|> try fstring <|> try varDef <|> tok
 
 topLevelExpr :: Parser Expr
-topLevelExpr = try num <|> try fstring <|> try varDef <|> try wordDef <|> try wordDefAsm <|> tok
+topLevelExpr = try num <|> try fstring <|> try varDef <|> try wordDef <|> try wordDefAsm <|> try binInc <|> tok
 
 parseForth :: String -> Either String [Expr]
 parseForth s =

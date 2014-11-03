@@ -1,18 +1,16 @@
 1 CPU_SPEED
 VAR X
 VAR Y
-VAR VX
-VAR VY
-VAR CURBUFF
-
 0 X !
 0 Y !
-0 CURBUFF !
 
 DI
 1 CPU_SPEED
+HALF_RES
 CLEARSCREEN
+0 CURBUFF !
 GAMELOOP
+FULL_RES
 0 CPU_SPEED
 EI
 
@@ -51,38 +49,25 @@ WORD GAMELOOP {
 
     GETARROWS (STACK: UP DOWN LEFT RIGHT)
 
-    0 DUP VX ! VY !
-
     IF (RIGHT KEY)
-         X @ Y @ 22 + 0x5C5C 4 2 FILLRECT (Clear tail)
-         4 VX +!
+         X @ Y @ 0x64DC 2 19 FILLRECT
+         2 X +!
     THEN
     IF (LEFT KEY)
-         X @ 92 + Y @ 21 + 0x5C5C 4 8 FILLRECT (Clear left hoof)
-         -4 VX +!
+         X @ 46 + Y @ 0x64DC 2 19 FILLRECT
+         -2 X +!
     THEN
     IF (DOWN KEY)
-        X @ 40 + Y @ 0x5C5C 39 4 FILLRECT (Clear wing/hair)
-        4 VY +!
+        X @ Y @ 0x64DC 48 2 FILLRECT
+        2 Y +!
     THEN
     IF (UP KEY)
-        X @ 59 + Y @ 33 + 0x5C5C 10 4 FILLRECT
-        -4 VY +!
+        X @ Y @ 17 + 0x64DC 48 2 FILLRECT
+        -2 Y +!
     THEN
 
-    X @ VX @ +
-    0   MAX (Lower clamp)
-    224 MIN (Upper clamp)
-    DUP X ! (Stack: X + VX)
-
-    Y @ VY @ +
-    0   MAX
-    201 MIN
-    DUP Y ! (Stack: X + VX, Y + VY)
-    RDSprite DISP_SPRT_XLIB
-
     (X @ Y @ 0xFE00 48 19 FILLRECT)
-
+    X @ Y @ RDSprite DISP_SPRT
 
     RECURSE
 }
@@ -90,7 +75,7 @@ WORD GAMELOOP {
 WORD CLEARSCREEN {
     CURBUFF @   (Save offset)
     0 CURBUFF ! (No offset to screen-clear)
-    0 0 0x5C5C 320 240 FILLRECT
+    0 0 0x64DC 320 120 FILLRECT
     CURBUFF !   (Restore offset)
 }
 
@@ -99,20 +84,55 @@ WORD HALF_RES {
     0x3033 0x07 SETLCD (Enable partial images)
     0      0x80 SETLCD (Partial img 1 disp pos)
     160    0x83 SETLCD (Partial img 2 disp pos)
+    0 DISP_BUFFER
+    160 CURBUFF !
 }
 
+WORD FULL_RES {
+    0x0000 0x01 SETLCD (No interlacing)
+    0x0133 0x07 SETLCD (Disable partial images)
+}
+
+WORD DISP_BUFFER {
+    DUP DUP
+    0x81 SETLCD (Img 1 start)
+    0x84 SETLCD (Img 2 start)
+    159 + DUP
+    0x82 SETLCD (Img 1 end)
+    0x85 SETLCD (Img 2 end)
+}
+
+VAR CURBUFF
+WORD FLIP_BUFFER {
+    CURBUFF @ IF
+        160 0
+    ELSE
+        0 160
+    THEN
+    CURBUFF !
+    DISP_BUFFER
+}
 
 ( INPUT: X Y WIDTH HEIGHT )
+( RETURN: WIDTH HEIGHT )
 WORD SET_LCD_WIN {
-    ROT DUP DUP           (X W H Y Y Y)
+    << (Height *= 2)
+    2SWAP                 (STACK: WIDTH HEIGHT X Y)
+    << (Y *= 2)
+    SWAP (Y X)
+    CURBUFF @ +
+    SWAP (X Y)
+
+    DUP DUP               (W H X Y Y Y)
     0x50 SETLCD           (Win top)
     0x20 SETLCD           (Cursor y)
-    + 1- 0x51 SETLCD  (Win bottom, STACK: WIDTH X)
+    2 PICK + 1- 0x51 SETLCD  (Win bottom, STACK: WIDTH HEIGHT X)
 
-    SWAP DUP DUP          (W X X X)
+    DUP DUP               (W H X X X)
     0x52 SETLCD           (Win left)
     0x21 SETLCD           (Cursor x)
-    + 1- 0x53 SETLCD  (Win right)
+    2 PICK + 1- 0x53 SETLCD  (Win right,  STACK: WIDTH HEIGHT)
+    >> (Height /= 2)
 }
 
 ( Input: X Y POINTER )
@@ -121,6 +141,7 @@ WORD DISP_SPRT {
             @  (WIDTH)
     SWAP 2+ @  (HEIGHT)
     SET_LCD_WIN
+    2DROP      (Dont need width/height anymore)
     R> 4 + (Advance to image data)
     DISP_SPRT_FILL
 }
@@ -131,15 +152,16 @@ WORD DISP_SPRT_XLIB {
             @  (WIDTH)
     SWAP 2+ @  (HEIGHT)
     SET_LCD_WIN
-    R> 4 +
+    2DROP      (Dont need width/height anymore)
+    R>
     DISP_SPRT_XLIB_FILL
 }
 
 ( INPUT: X Y COLOR WIDTH HEIGHT )
+( Configured for half-res mode )
 WORD FILLRECT {
     ROT >R                (Color on R stack)
-    2SWAP 2OVER           (Save width/height)
-    SET_LCD_WIN           (Stack = width/height)
+    SET_LCD_WIN
     R>                    (Color off R stack)
     PIXELFILL
 }
@@ -202,11 +224,9 @@ ASMWORD SETLCD {
 
 ( Fills WIDTH * HEIGHT pixels with COLOR )
 ( INPUT: WIDTH HEIGHT COLOR )
-( Only handles even heights )
 ASMWORD PIXELFILL {
     pop de ;Color
     pop bc ;C = height
-    srl c  ;Height /= 2
     pop hl ;HL = width
 
     ld a,22h
@@ -221,7 +241,7 @@ _pixelFillLpX:
     _pixelFillLpY:
         out (c),d
         out (c),e
-        out (c),d ;do twice for speeds
+        out (c),d ;Half-res, do twice
         out (c),e
         djnz _pixelFillLpY
     pop bc
@@ -232,25 +252,27 @@ _pixelFillLpX:
 }
 
 (INPUT: Pointer)
-(Display sprite with xLIBC palette)
+(Display sprite with xLIBC palette, adjusted for half-res)
 ASMWORD DISP_SPRT_XLIB_FILL {
     ld a,22h    ;Switch to GRAM
     out (10h),a
     out (10h),a
 
     pop hl      ;Data pointer
-    ;Size in bytes, Big Endian
+    ;Size in bytes
+    ld b,(hl) \ inc hl ;LSB
     ld d,(hl) \ inc hl ;MSB
-    ld e,(hl) \ inc hl ;LSB
-    ld b,e
 
-    ;If B != 0, we need an extra iteration
-    dec de
-    inc d
+    ld a,b
+    or a
+    jr z,$+3
+    inc d       ;If B is non 0, we need an extra iteration of the inner loop
 
 _dispxlibLp:
     _dispxlibLpInner:
         ld a,(hl) \ inc hl
+        out (11h),a
+        out (11h),a
         out (11h),a
         out (11h),a
         djnz _dispxlibLpInner
@@ -269,11 +291,12 @@ ASMWORD DISP_SPRT_FILL {
     pop hl      ;Data pointer
     ;Size in bytes, Big Endian
     ld d,(hl) \ inc hl ;MSB
-    ld e,(hl) \ inc hl ;LSB
-    ld b,e
+    ld b,(hl) \ inc hl ;LSB
 
     ;If B != 0, we need an extra iteration
-    dec de
+    ld a,b
+    or a
+    jr z,$+3
     inc d
 
 _dispSprtLp:

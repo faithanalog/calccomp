@@ -119,7 +119,7 @@ instrBytes PUSH (Reg16Index r:_) = regIndex r <> instrBytes PUSH [Reg16 HL]
 instrBytes ADC (Reg8 A:Reg8 r:_)       = w8 $ regBits 0x88 r 0
 instrBytes ADC (Reg8 A:Num r:_)        = w8l [0xCE, r]
 instrBytes ADC (Reg8 A:RegIndex r o:_) = regIndex r <> w8l [regBits 0x88 HL' 0, o]
-instrBytes ADC (Reg8 HL:Reg16 r:_)     = w8l [0xED, regBits 0x4A r 4]
+instrBytes ADC (Reg16 HL:Reg16 r:_)     = w8l [0xED, regBits 0x4A r 4]
 
 instrBytes ADD (Reg8 A:Reg8 r:_)         = w8 $ regBits 0x80 r 0
 instrBytes ADD (Reg8 A:Num r:_)          = w8l [0xC6, r]

@@ -268,8 +268,9 @@ wasm "2+" = rtni [asm|
 |]
 
 wasm "-" = rtni [asm|
-    pop de
     pop hl
+    pop de
+    ex de,hl
     or a ;Clear carry
     sbc hl, de
     push hl
@@ -346,38 +347,41 @@ wasm "ABS" = rtn [asm|
 |]
 
 wasm "MIN" = rtn [asm|
-    pop de ;Return addr
-    pop bc
     pop hl
-    or a
-    sbc hl,bc
-    add hl,bc
-    ;hl >= bc, push bc. Else push hl
-    jr nc,$+5
-    push hl
-    ex de,hl
+    pop bc
+    pop de
+;Adapted from HL>DE, where BC>DE
+    ld a,e
+    sub c
+    ld a,d
+    sbc a,b
+    rra
+    xor d
+    xor b
+    jp p,$+5
+    push de
     jp (hl)
-    ;Jump end
     push bc
-    ex de,hl
     jp (hl)
 |]
 
+
 wasm "MAX" = rtn [asm|
-    pop de ;Return addr
-    pop bc
     pop hl
-    or a
-    sbc hl,bc
-    add hl,bc
-    ;hl >= bc, push bc. Else push hl
-    jr nc,$+5
+    pop bc
+    pop de
+;Adapted from HL>DE, where BC>DE
+    ld a,e
+    sub c
+    ld a,d
+    sbc a,b
+    rra
+    xor d
+    xor b
+    jp p,$+5
     push bc
-    ex de,hl
     jp (hl)
-    ;Jump end
-    push hl
-    ex de,hl
+    push de
     jp (hl)
 |]
 
@@ -664,9 +668,79 @@ wasm "." = wasm "PUTNUM"
 wasm "DI" = rtni [asm|di|]
 wasm "EI" = rtni [asm|ei|]
 
+-- Shamelessly copied from axe.
+-- Input is a GETCSC key code, output is the state of the key
+wasm "GETKEY" = withDeps [getKeyState] $ rtni [asm|
+    pop hl
+    call GET_KEY_STATE
+    push hl
+|]
+
+-- Get the key states of the arrow keys
+-- OUTPUT: UP DOWN LEFT RIGHT
+wasm "GETARROWS" = rtn [asm|
+    pop de     ;Return address
+
+    ld a,FFh
+    out (01h),a
+    ld a,FEh   ;Arrow group
+    out (01h),a
+    or a
+    push af
+    sbc hl,hl
+    pop af
+    in a,(01h)
+
+    ;Special case for 'up' key, because I want UP DOWN LEFT RIGHT output
+    ;HL is 0 from KBD scan code above
+    bit 3,a
+    jr nz,$+3 ;bit 3 == 1, push 0, else push -1
+    dec hl
+    push hl
+
+    ;Push states of DOWN LEFT RIGHT
+    ld b,3
+_arrowLp:
+    ld hl,-1
+    rra
+    jr nc,$+3
+    inc hl    ;If bit is 0, key is pressed, leave at -1. Else inc to 0
+    push hl
+    djnz _arrowLp
+
+    ex de,hl   ;HL = return address
+    jp (hl)
+|]
+
 wasm _ = Nothing
 
 -- ASM dependencies of FORTH words
+getKeyState = [asm|
+    ;Input: HL = key code
+    ;Output: HL = key state
+GET_KEY_STATE:
+    ld a,l
+    ld de,%0111111100000001
+    rlc d
+    adc a,%11110111
+    jr c,$-4
+    rrc e
+    inc a
+    jr nz,$-3
+    ld a,d
+    out (01h),a
+    or a
+    push af
+    sbc hl,hl  ;HL = 0
+    pop af
+    in a,(01h)
+    and e
+    jr nz,$+3
+    dec hl     ;Key pressed, HL = -1, else HL stays 0
+    ret
+|]
+
+
 hlGTDEsigned = [asm|
 HL_GT_DE_SIGNED:
     ld a,e

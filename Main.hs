@@ -13,11 +13,10 @@ main = do
     forthcode <- readFile "GAME.forth"
     header <- Asm.parseFile "ti84pcse.inc"
 
-    let Right x = FORTH.compileText forthcode
-    putStrLn . Asm.printTree $ x
+    Right asm <- FORTH.compileTextWithIncs forthcode
+    putStrLn . Asm.printTree $ asm
 
     let file = do
-        asm <- FORTH.compileText forthcode
         incs <- header
         bytes <- Asm.assemble $ incs ++ asm
         {-return bytes-}

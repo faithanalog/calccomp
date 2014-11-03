@@ -1,5 +1,5 @@
 {-# LANGUAGE QuasiQuotes, PackageImports #-}
-module FORTH.Compiler (compileProg, compileText) where
+module FORTH.Compiler (compileProg, compileText, compileProgWithIncs, compileTextWithIncs) where
 
 import FORTH.Parser
 import FORTH.Stdlib
@@ -8,9 +8,12 @@ import Data.Maybe
 import Data.List
 import Data.List.Utils
 import Control.Applicative
+import Data.Word
 import qualified Asm.Expr as A
 import qualified Asm.Parser as A
 import qualified Data.Map.Strict as Map
+import qualified Data.ByteString.Lazy as B
+
 import "mtl" Control.Monad.State.Lazy
 
 type Strings = Map.Map String String
@@ -257,8 +260,9 @@ getVars :: [Expr] -> Vars
 getVars xprs = [x | (VarDef x) <- xprs] ++ concat [getVars x | (WordDef _ x) <- xprs]
 
 -- Compiles a FORTH program into Assembly
-compileProg :: [Expr] -> [A.Expr]
-compileProg xprs =
+-- Pass [] for startVars if you have no pre-defined variables
+compileProg :: [Expr] -> Vars -> [A.Expr]
+compileProg xprs startVars =
     let (body, wordDefs) = flip evalState initState $ do
         -- Get all word definitions
         let asmWords  = [w | w@(WordDefAsm nm _) <- xprs]
@@ -290,7 +294,7 @@ compileProg xprs =
         map defString (Map.toList strings)
     ]
     where strings = getStrings xprs
-          vars = getVars xprs
+          vars = getVars xprs ++ startVars
           platform = "ti84pcse"
           initState = FState { strs = strings
                              , vars = vars
@@ -298,7 +302,32 @@ compileProg xprs =
                              , ctrlGen = makeLabelGen "CTRL"
                              , wordLbls = Map.empty }
 
+binaryInc :: String -> String -> IO [A.Expr]
+binaryInc nm fname = do
+    contents <- B.readFile fname
+    let bytes = B.unpack contents
+    return $ [asm|
+        @{"VAR_" ++ nm ++ ":"}
+        @{".db " ++ intercalate "," (map show bytes)}
+    |]
+
+compileProgWithIncs :: [Expr] -> IO [A.Expr]
+compileProgWithIncs xprs = do
+    let incs = [(nm, binaryInc nm fname) | BinaryInc nm fname <- xprs]
+        binvars = map fst incs
+    bytes <- concat <$> mapM snd incs
+    return $ compileProg xprs binvars ++ bytes
+
 compileText :: String -> Either String [A.Expr]
 compileText str = do
     xprs <- parseForth str
-    return $ compileProg xprs
+    return $ compileProg xprs []
+
+compileTextWithIncs :: String -> IO (Either String [A.Expr])
+compileTextWithIncs str = do
+    let xprs = parseForth str
+    case xprs of
+      Left err -> return (Left err)
+      Right code -> do
+          asm <- compileProgWithIncs code
+          return (Right asm)
